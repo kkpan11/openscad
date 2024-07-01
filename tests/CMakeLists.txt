@@ -1319,16 +1319,25 @@ set_tests_properties(
   # OpenCSG z fighting https://github.com/openscad/openscad/issues/4595
   openscad-viewoptions-edges_view-options-tests
   openscad-viewoptions-axes-scales-edges_view-options-tests
-
-  # Non-manifold tests: https://github.com/openscad/openscad/issues/3567
-  # This may work with fast-csg, but will fail with both CGAL and Manifold
-  cgalpngtest_linear_extrude-scale-zero-tests
-  csgpngtest_linear_extrude-scale-zero-tests
+  opencsgtest_surface_image
+  throwntogethertest_surface_image
 
   # CGAL sometimes fail to union minkowski convex decompositions, causing visual differences
   # in rendering.
   cgalpngtest_minkowski3-difference-test
   csgpngtest_minkowski3-difference-test
+
+  # Disabled due to https://github.com/openscad/openscad/issues/5159
+  cgalpngtest_projection
+  csgpngtest_projection
+
+  # Disabled due to https://github.com/openscad/openscad/issues/5158
+  throwntogethertest_example017
+  cgalpngtest_example017 
+  opencsgtest_example017
+
+  # Disabled due to https://github.com/openscad/openscad/issues/4398
+  csgpngtest_logo_and_text
 
   PROPERTIES DISABLED TRUE
 )
@@ -1370,6 +1379,15 @@ list(APPEND NEF3_BROKEN_TESTS
   throwntogethertest_nef3_broken
   csgpngtest_nef3_broken
 )
+
+# Disable tests broken due to https://github.com/openscad/openscad/issues/3567
+if (NOT EXPERIMENTAL)
+    set_tests_properties(
+      cgalpngtest_linear_extrude-scale-zero-tests
+      csgpngtest_linear_extrude-scale-zero-tests
+      PROPERTIES DISABLED TRUE
+    )
+endif()
 
 # Platform specific test disable
 if(APPLE)
