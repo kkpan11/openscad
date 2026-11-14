@@ -24,22 +24,27 @@
  *
  */
 
-#include "ProjectionNode.h"
-#include "module.h"
-#include "ModuleInstantiation.h"
-#include "Children.h"
-#include "Parameters.h"
-#include "Builtins.h"
+#include "core/ProjectionNode.h"
 
-#include <cassert>
 #include <boost/assign/std/vector.hpp>
-using namespace boost::assign; // bring 'operator+=()' into scope
+#include <cassert>
+#include <memory>
+#include <utility>
 
-static std::shared_ptr<AbstractNode> builtin_projection(const ModuleInstantiation *inst, Arguments arguments, const Children& children)
+#include "core/Builtins.h"
+#include "core/Children.h"
+#include "core/ModuleInstantiation.h"
+#include "core/Parameters.h"
+#include "core/module.h"
+using namespace boost::assign;  // bring 'operator+=()' into scope
+
+static std::shared_ptr<AbstractNode> builtin_projection(const ModuleInstantiation *inst,
+                                                        Arguments arguments, const Children& children)
 {
   auto node = std::make_shared<ProjectionNode>(inst);
 
-  Parameters parameters = Parameters::parse(std::move(arguments), inst->location(), {"cut"}, {"convexity"});
+  Parameters parameters =
+    Parameters::parse(std::move(arguments), inst->location(), {"cut"}, {"convexity"});
   node->convexity = static_cast<int>(parameters["convexity"].toDouble());
   if (parameters["cut"].type() == Value::Type::BOOL) {
     node->cut_mode = parameters["cut"].toBool();
@@ -50,14 +55,14 @@ static std::shared_ptr<AbstractNode> builtin_projection(const ModuleInstantiatio
 
 std::string ProjectionNode::toString() const
 {
-  return STR("projection(cut = ", (this->cut_mode ? "true" : "false"),
-                                 ", convexity = ", this->convexity, ")");
+  return STR("projection(cut = ", (this->cut_mode ? "true" : "false"), ", convexity = ", this->convexity,
+             ")");
 }
 
 void register_builtin_projection()
 {
   Builtins::init("projection", new BuiltinModule(builtin_projection),
-  {
-    "projection(cut = false)",
-  });
+                 {
+                   "projection(cut = false)",
+                 });
 }

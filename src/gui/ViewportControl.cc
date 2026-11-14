@@ -1,10 +1,22 @@
-#include "ViewportControl.h"
-#include "printutils.h"
-#include "MainWindow.h"
-#include "QGLView.h"
-#include <boost/filesystem.hpp>
-#include <cfloat>
+#include "gui/ViewportControl.h"
+
+#include <QBoxLayout>
 #include <QDoubleSpinBox>
+#include <QGridLayout>
+#include <QLayoutItem>
+#include <QObject>
+#include <QPalette>
+#include <QResizeEvent>
+#include <QString>
+#include <QWidget>
+#include <cfloat>
+#include <filesystem>
+#include <iostream>
+
+#include "gui/MainWindow.h"
+#include "gui/QGLView.h"
+#include "openscad_gui.h"
+#include "utils/printutils.h"
 
 ViewportControl::ViewportControl(QWidget *parent) : QWidget(parent)
 {
@@ -18,52 +30,75 @@ ViewportControl::ViewportControl(QWidget *parent) : QWidget(parent)
 
 void ViewportControl::initGUI()
 {
+  QFontMetrics metrics(this->font());
+#if QT_VERSION >= QT_VERSION_CHECK(5, 11, 0)
+  int charWidth = metrics.horizontalAdvance("0");
+#else
+  int charWidth = metrics.width("0");
+#endif
+
+  int dynamicMinWidth = (charWidth * 8) + 35;
+  int dynamicMaxWidth = (charWidth * 12) + 35;
+
   auto spinDoubleBoxes = this->groupBoxAbsoluteCamera->findChildren<QDoubleSpinBox *>();
   for (auto spinDoubleBox : spinDoubleBoxes) {
     spinDoubleBox->setMinimum(-DBL_MAX);
     spinDoubleBox->setMaximum(+DBL_MAX);
-    connect(spinDoubleBox, SIGNAL(valueChanged(double)), this, SLOT(updateCamera()));
+
+    spinDoubleBox->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    spinDoubleBox->setMinimumWidth(dynamicMinWidth);
+    spinDoubleBox->setMaximumWidth(dynamicMaxWidth);
+
+    connect(spinDoubleBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &ViewportControl::updateCamera);
   }
 
   spinBoxWidth->setMinimum(1);
   spinBoxHeight->setMinimum(1);
   spinBoxWidth->setMaximum(8192);
   spinBoxHeight->setMaximum(8192);
-  connect(spinBoxWidth, SIGNAL(valueChanged(int)), this, SLOT(requestResize()));
-  connect(spinBoxHeight, SIGNAL(valueChanged(int)), this, SLOT(requestResize()));
+
+  spinBoxWidth->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+  spinBoxWidth->setMinimumWidth(dynamicMinWidth);
+  spinBoxWidth->setMaximumWidth(dynamicMaxWidth);
+
+  spinBoxHeight->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+  spinBoxHeight->setMinimumWidth(dynamicMinWidth);
+  spinBoxHeight->setMaximumWidth(dynamicMaxWidth);
+
+  connect(spinBoxWidth, QOverload<int>::of(&QSpinBox::valueChanged), this,
+          &ViewportControl::requestResize);
+  connect(spinBoxHeight, QOverload<int>::of(&QSpinBox::valueChanged), this,
+          &ViewportControl::requestResize);
 }
 
 void ViewportControl::setMainWindow(MainWindow *mainWindow)
 {
-  this->mainWindow = mainWindow;
   this->qglview = mainWindow->qglview;
-}
-
-bool ViewportControl::isLightTheme()
-{
-  bool ret = true;
-  if (mainWindow) {
-    ret = mainWindow->isLightTheme();
-  } else {
-    std::cout << "ViewportControl: You need to set the mainWindow before calling isLightTheme" << std::endl;
-  }
-  return ret;
+  cameraChanged();
 }
 
 QString ViewportControl::yellowHintBackground()
 {
-  return {isLightTheme() ? "background-color:#ffffaa;" : "background-color:#30306;"};
+  QPalette defaultPalette;
+  const auto bgColor = defaultPalette.base().color().toRgb();
+  QString styleSheet = UIUtils::blendForBackgroundColorStyleSheet(bgColor, warnBlendColor);
+  return styleSheet;
 }
 
 QString ViewportControl::redHintBackground()
 {
-  return {isLightTheme() ? "background-color:#ffaaaa;" : "background-color:#502020;"};
+  QPalette defaultPalette;
+  const auto bgColor = defaultPalette.base().color().toRgb();
+  QString styleSheet = UIUtils::blendForBackgroundColorStyleSheet(bgColor, errorBlendColor);
+  return styleSheet;
 }
 
 void ViewportControl::resizeEvent(QResizeEvent *event)
 {
   auto layoutAspectRatio = dynamic_cast<QBoxLayout *>(groupBoxAspectRatio->layout());
   auto gridLayout = dynamic_cast<QGridLayout *>(groupBoxAbsoluteCamera->layout());
+  gridLayout->setColumnStretch(4, 1);
 
   QLayoutItem *child;
   if (layoutAspectRatio && gridLayout) {
@@ -73,17 +108,17 @@ void ViewportControl::resizeEvent(QResizeEvent *event)
         while ((child = gridLayout->takeAt(0)) != nullptr) {
           delete child;
         }
-        gridLayout->addWidget(labelTranslation , 0, 0, 1, 1);
-        gridLayout->addWidget(doubleSpinBox_tx , 1, 0, 1, 1);
-        gridLayout->addWidget(doubleSpinBox_ty , 2, 0, 1, 1);
-        gridLayout->addWidget(doubleSpinBox_tz , 3, 0, 1, 1);
-        gridLayout->addWidget(labelRotation    , 4, 0, 1, 1);
-        gridLayout->addWidget(doubleSpinBox_rx , 5, 0, 1, 1);
-        gridLayout->addWidget(doubleSpinBox_ry , 6, 0, 1, 1);
-        gridLayout->addWidget(doubleSpinBox_rz , 7, 0, 1, 1);
-        gridLayout->addWidget(labelDistance    , 8, 0, 1, 1);
-        gridLayout->addWidget(doubleSpinBox_d  , 9, 0, 1, 1);
-        gridLayout->addWidget(labelFOV         , 10, 0, 1, 1);
+        gridLayout->addWidget(labelTranslation, 0, 0, 1, 1);
+        gridLayout->addWidget(doubleSpinBox_tx, 1, 0, 1, 1);
+        gridLayout->addWidget(doubleSpinBox_ty, 2, 0, 1, 1);
+        gridLayout->addWidget(doubleSpinBox_tz, 3, 0, 1, 1);
+        gridLayout->addWidget(labelRotation, 4, 0, 1, 1);
+        gridLayout->addWidget(doubleSpinBox_rx, 5, 0, 1, 1);
+        gridLayout->addWidget(doubleSpinBox_ry, 6, 0, 1, 1);
+        gridLayout->addWidget(doubleSpinBox_rz, 7, 0, 1, 1);
+        gridLayout->addWidget(labelDistance, 8, 0, 1, 1);
+        gridLayout->addWidget(doubleSpinBox_d, 9, 0, 1, 1);
+        gridLayout->addWidget(labelFOV, 10, 0, 1, 1);
         gridLayout->addWidget(doubleSpinBox_fov, 11, 0, 1, 1);
         scrollAreaWidgetContents->layout()->invalidate();
       }
@@ -106,13 +141,19 @@ void ViewportControl::resizeEvent(QResizeEvent *event)
         gridLayout->addWidget(labelFOV, 3, 0, 1, 1);
         gridLayout->addWidget(doubleSpinBox_fov, 3, 1, 1, 1);
         scrollAreaWidgetContents->layout()->invalidate();
+      } else {
+        const auto width = scrollAreaWidgetContents->minimumSizeHint().width();
+        if (scrollArea->minimumSize().width() != width) {
+          scrollArea->setMinimumSize(QSize(width, 0));
+        }
       }
     }
   }
   QWidget::resizeEvent(event);
 }
 
-void ViewportControl::cameraChanged(){
+void ViewportControl::cameraChanged()
+{
   if (!inputMutex.try_lock()) return;
 
   const auto vpt = qglview->cam.getVpt();
@@ -132,28 +173,21 @@ void ViewportControl::cameraChanged(){
   inputMutex.unlock();
 }
 
-void ViewportControl::updateCamera(){
+void ViewportControl::updateCamera()
+{
   if (!inputMutex.try_lock()) return;
 
-  //viewport translation
-  qglview->cam.setVpt(
-    doubleSpinBox_tx->value(),
-    doubleSpinBox_ty->value(),
-    doubleSpinBox_tz->value()
-    );
+  // viewport translation
+  qglview->cam.setVpt(doubleSpinBox_tx->value(), doubleSpinBox_ty->value(), doubleSpinBox_tz->value());
 
-  //viewport rotation angles in degrees
-  qglview->cam.setVpr(
-    doubleSpinBox_rx->value(),
-    doubleSpinBox_ry->value(),
-    doubleSpinBox_rz->value()
-    );
+  // viewport rotation angles in degrees
+  qglview->cam.setVpr(doubleSpinBox_rx->value(), doubleSpinBox_ry->value(), doubleSpinBox_rz->value());
 
-  //viewport camera field of view
+  // viewport camera field of view
   double fov = doubleSpinBox_fov->value();
   qglview->cam.setVpf(fov);
 
-  //camera distance
+  // camera distance
   double d = doubleSpinBox_d->value();
   qglview->cam.setVpd(d);
 
@@ -162,8 +196,9 @@ void ViewportControl::updateCamera(){
   inputMutex.unlock();
 }
 
-void ViewportControl::updateViewportControlHints(){
-  //viewport camera field of view
+void ViewportControl::updateViewportControlHints()
+{
+  // viewport camera field of view
   double fov = doubleSpinBox_fov->value();
   if (fov < 0 || fov > 180) {
     doubleSpinBox_fov->setToolTip(_("extreme values might may lead to strange behavior"));
@@ -176,7 +211,7 @@ void ViewportControl::updateViewportControlHints(){
     doubleSpinBox_fov->setStyleSheet("");
   }
 
-  //camera distance
+  // camera distance
   double d = doubleSpinBox_d->value();
   if (d < 0) {
     doubleSpinBox_d->setToolTip(_("negative distances are not supported"));
@@ -188,10 +223,10 @@ void ViewportControl::updateViewportControlHints(){
     doubleSpinBox_d->setToolTip("");
     doubleSpinBox_d->setStyleSheet("");
   }
-
 }
 
-void ViewportControl::resizeToRatio(){
+void ViewportControl::resizeToRatio()
+{
   int w0 = spinBoxWidth->value();
   int h0 = spinBoxHeight->value();
 
@@ -206,7 +241,8 @@ void ViewportControl::resizeToRatio(){
   }
 }
 
-void ViewportControl::viewResized(){
+void ViewportControl::viewResized()
+{
   if (!resizeMutex.try_lock()) return;
 
   this->maxW = qglview->size().rwidth();
@@ -221,7 +257,8 @@ void ViewportControl::viewResized(){
   resizeMutex.unlock();
 }
 
-void ViewportControl::requestResize(){
+void ViewportControl::requestResize()
+{
   if (!resizeMutex.try_lock()) return;
 
   resizeToRatio();
@@ -229,8 +266,9 @@ void ViewportControl::requestResize(){
   resizeMutex.unlock();
 }
 
-bool ViewportControl::focusNextPrevChild(bool next){
-  QWidget::focusNextPrevChild(next);   //tab order is set in the UI File
+bool ViewportControl::focusNextPrevChild(bool next)
+{
+  QWidget::focusNextPrevChild(next);  // tab order is set in the UI File
 
   bool bChildHasFocus = false;
   for (auto child : QObject::findChildren<QWidget *>()) {
@@ -238,7 +276,7 @@ bool ViewportControl::focusNextPrevChild(bool next){
       bChildHasFocus = true;
     }
   }
-  //do not let the focus leave this widget
+  // do not let the focus leave this widget
   if (!bChildHasFocus) {
     if (next) {
       spinBoxWidth->setFocus();

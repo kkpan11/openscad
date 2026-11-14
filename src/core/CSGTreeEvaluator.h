@@ -1,12 +1,18 @@
 #pragma once
 
-#include <map>
-#include <list>
-#include <vector>
 #include <cstddef>
-#include "NodeVisitor.h"
+#include <list>
+#include <map>
 #include <memory>
-#include "CSGNode.h"
+#include <vector>
+
+#include "core/BaseVisitable.h"
+#include "core/CSGNode.h"
+#include "core/ModuleInstantiation.h"
+#include "core/NodeVisitor.h"
+#include "core/enums.h"
+#include "core/node.h"
+#include "geometry/Geometry.h"
 
 class CSGNode;
 class GeometryEvaluator;
@@ -16,7 +22,8 @@ class CSGTreeEvaluator : public NodeVisitor
 {
 public:
   CSGTreeEvaluator(const Tree& tree, GeometryEvaluator *geomevaluator = nullptr)
-    : tree(tree), geomevaluator(geomevaluator) {
+    : tree(tree), geomevaluator(geomevaluator)
+  {
   }
 
   Response visit(State& state, const AbstractNode& node) override;
@@ -31,13 +38,13 @@ public:
 
   std::shared_ptr<CSGNode> buildCSGTree(const AbstractNode& node);
 
-  [[nodiscard]] const std::shared_ptr<CSGNode>& getRootNode() const {
-    return this->rootNode;
-  }
-  [[nodiscard]] const std::vector<std::shared_ptr<CSGNode>>& getHighlightNodes() const {
+  [[nodiscard]] const std::shared_ptr<CSGNode>& getRootNode() const { return this->rootNode; }
+  [[nodiscard]] const std::vector<std::shared_ptr<CSGNode>>& getHighlightNodes() const
+  {
     return this->highlightNodes;
   }
-  [[nodiscard]] const std::vector<std::shared_ptr<CSGNode>>& getBackgroundNodes() const {
+  [[nodiscard]] const std::vector<std::shared_ptr<CSGNode>>& getBackgroundNodes() const
+  {
     return this->backgroundNodes;
   }
 
@@ -45,9 +52,9 @@ private:
   void addToParent(const State& state, const AbstractNode& node);
   void applyToChildren(State& state, const AbstractNode& node, OpenSCADOperator op);
   std::shared_ptr<CSGNode> evaluateCSGNodeFromGeometry(State& state,
-                                                  const std::shared_ptr<const Geometry>& geom,
-                                                  const ModuleInstantiation *modinst,
-                                                  const AbstractNode& node);
+                                                       const std::shared_ptr<const Geometry>& geom,
+                                                       const ModuleInstantiation *modinst,
+                                                       const AbstractNode& node);
   void applyBackgroundAndHighlight(State& state, const AbstractNode& node);
 
   using ChildList = std::list<std::shared_ptr<const AbstractNode>>;
@@ -59,5 +66,5 @@ protected:
   std::shared_ptr<CSGNode> rootNode;
   std::vector<std::shared_ptr<CSGNode>> highlightNodes;
   std::vector<std::shared_ptr<CSGNode>> backgroundNodes;
-  std::map<int, std::shared_ptr<CSGNode>> stored_term; // The term evaluated from each node index
+  std::map<int, std::shared_ptr<CSGNode>> stored_term;  // The term evaluated from each node index
 };

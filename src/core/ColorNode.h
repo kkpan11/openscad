@@ -1,13 +1,17 @@
 #pragma once
 
-#include "node.h"
-#include "linalg.h"
+#include <string>
+
+#include "core/BaseVisitable.h"
+#include "core/ModuleInstantiation.h"
+#include "core/node.h"
+#include "geometry/linalg.h"
 
 class ColorNode : public AbstractNode
 {
 public:
   VISITABLE();
-  ColorNode(const ModuleInstantiation *mi) : AbstractNode(mi), color(-1.0f, -1.0f, -1.0f, 1.0f) { }
+  ColorNode(const ModuleInstantiation *mi) : AbstractNode(mi) {}
   std::string toString() const override;
   std::string name() const override;
 

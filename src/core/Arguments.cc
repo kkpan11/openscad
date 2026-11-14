@@ -24,17 +24,25 @@
  *
  */
 
-#include "Arguments.h"
-#include "Expression.h"
+#include "core/Arguments.h"
 
-Arguments::Arguments(const AssignmentList& argument_expressions, const std::shared_ptr<const Context>& context) :
-  evaluation_session(context->session())
+#include <memory>
+#include <ostream>
+
+#include "core/Assignment.h"
+#include "core/Context.h"
+#include "core/EvaluationSession.h"
+#include "core/Expression.h"
+
+Arguments::Arguments(const AssignmentList& argument_expressions,
+                     const std::shared_ptr<const Context>& context)
+  : evaluation_session(context->session())
 {
   for (const auto& argument_expression : argument_expressions) {
-    emplace_back(
-      argument_expression->getName().empty() ? boost::none : boost::optional<std::string>(argument_expression->getName()),
-      argument_expression->getExpr()->evaluate(context)
-      );
+    emplace_back(argument_expression->getName().empty()
+                   ? boost::none
+                   : boost::optional<std::string>(argument_expression->getName()),
+                 argument_expression->getExpr()->evaluate(context));
   }
 }
 
@@ -45,6 +53,11 @@ Arguments Arguments::clone() const
     output.emplace_back(argument.name, argument.value.clone());
   }
   return output;
+}
+
+const std::string& Arguments::documentRoot() const
+{
+  return evaluation_session->documentRoot();
 }
 
 std::ostream& operator<<(std::ostream& stream, const Argument& argument)

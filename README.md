@@ -11,7 +11,7 @@ OpenSCAD is a software for creating solid 3D CAD objects. It is free software an
 available for Linux/UNIX, MS Windows and macOS.</p>
 
 Unlike most free software for creating 3D models (such as the famous
-application Blender), OpenSCAD focuses on the CAD aspects rather than the 
+application Blender), OpenSCAD focuses on the CAD aspects rather than the
 artistic aspects of 3D modeling. Thus this might be the application you are
 looking for when you are planning to create 3D models of machine parts but
 probably not the tool for creating computer-animated movies.
@@ -55,25 +55,31 @@ frame is where you'll see the 3D rendering of your model.
 
 Let's make a tree! Type the following code into the left frame:
 
-    cylinder(h = 30, r = 8);
+```scad
+cylinder(h = 30, r = 8);
+```
 
 Then render the 3D model by hitting F5. Now you can see a cylinder for
 the trunk in our tree. Now let's add the bushy/leafy part of the tree
 represented by a sphere. To do so, we will union a cylinder and a
 sphere.
 
-    union() {
-      cylinder(h = 30, r = 8);
-      sphere(20);
-    }
+```scad
+union() {
+    cylinder(h = 30, r = 8);
+    sphere(20);
+}
+```
 
 But, it's not quite right! The bushy/leafy are around the base of the
 tree. We need to move the sphere up the z-axis.
 
-    union() {
-      cylinder(h = 30, r = 8);
-      translate([0, 0, 40]) sphere(20);
-    }
+```scad
+union() {
+    cylinder(h = 30, r = 8);
+    translate([0, 0, 40]) sphere(20);
+}
+```
 
 And that's it! You made your first 3D model! There are other primitive
 shapes that you can combine with other set operations (union,
@@ -97,19 +103,19 @@ To build OpenSCAD, you need some libraries and tools. The version
 numbers in brackets specify the versions which have been used for
 development. Other versions may or may not work as well.
 
-If you're using a newer version of Ubuntu, you can install these 
-libraries from aptitude. If you're using Mac, or an older Linux/BSD, there 
-are build scripts that download and compile the libraries from source. 
+If you're using a newer version of Ubuntu, you can install these
+libraries from aptitude. If you're using Mac, or an older Linux/BSD, there
+are build scripts that download and compile the libraries from source.
 Follow the instructions for the platform you're compiling on below.
 
 * A C++ compiler supporting C++17
 * [cmake (3.5 ->)](https://cmake.org/)
-* [Qt (5.4 ->)](https://qt.io/)
+* [Qt (5.15 ->)](https://qt.io/)
 * [QScintilla2 (2.9 ->)](https://riverbankcomputing.com/software/qscintilla/)
 * [CGAL (5.4 ->)](https://www.cgal.org/)
  * [GMP (5.x)](https://gmplib.org/)
  * [MPFR (3.x)](https://www.mpfr.org/)
-* [boost (1.56 ->)](https://www.boost.org/)
+* [boost (1.70 ->)](https://www.boost.org/)
 * [OpenCSG (1.4.2 ->)](http://www.opencsg.org/)
 * [GLEW (1.5.4 ->)](http://glew.sourceforge.net/)
 * [Eigen (3.x)](https://eigen.tuxfamily.org/)
@@ -124,7 +130,9 @@ Follow the instructions for the platform you're compiling on below.
 * [double-conversion (2.0.1 -> )](https://github.com/google/double-conversion/)
 
 For the test suite, additional requirements are:
-* Python3 (3.8 -> )
+* Python3 (3.9 -> )
+* [Ghostscript (10.x ->)](https://www.ghostscript.com/index.html)
+* [Catch2 (3.0 ->)](https://github.com/catchorg/Catch2)
 
 ### Getting the source code
 
@@ -139,12 +147,22 @@ To pull the various submodules (incl. the [MCAD library](https://github.com/open
     cd openscad
     git submodule update --init --recursive
 
+### Contributing Changes
+
+You can create an issue to plan and discuss your change by visiting https://github.com/openscad/openscad/issues.
+
+If you want to work on an existing issue and plan to contribute changes via a PR later, you can assign the issue to yourself by commenting:
+
+`/assign-me`
+
+in a comment on the issue.
+
 ### Building for macOS
 
 Prerequisites:
 
 * Xcode
-* automake, libtool, cmake, pkg-config, wget, meson (we recommend installing these using Homebrew)
+* automake, libtool, cmake, pkg-config, wget, meson, python-packaging (we recommend installing these using Homebrew)
 
 Install Dependencies:
 
@@ -160,35 +178,35 @@ After building dependencies using one of the following options, follow the instr
 
         ./scripts/macosx-build-dependencies.sh
 
-1. **Homebrew** (assumes [Homebrew](https://brew.sh/) is already installed)
+2. **Homebrew** (assumes [Homebrew](https://brew.sh/) is already installed)
 
         ./scripts/macosx-build-homebrew.sh
 
 ### Building for Linux/BSD
 
-First, make sure that you have git installed (often packaged as 'git-core' 
-or 'scmgit'). Once you've cloned this git repository, download and install 
-the dependency packages listed above using your system's package 
-manager. A convenience script is provided that can help with this 
+First, make sure that you have git installed (often packaged as 'git-core'
+or 'scmgit'). Once you've cloned this git repository, download and install
+the dependency packages listed above using your system's package
+manager. A convenience script is provided that can help with this
 process on some systems:
 
-    sudo ./scripts/uni-get-dependencies.sh
+    sudo ./scripts/uni-get-dependencies.sh qt6
 
-After installing dependencies, check their versions. You can run this 
+After installing dependencies, check their versions. You can run this
 script to help you:
 
     ./scripts/check-dependencies.sh
 
-Take care that you don't have old local copies anywhere (`/usr/local/`). 
-If all dependencies are present and of a high enough version, skip ahead 
-to the Compilation instructions. 
+Take care that you don't have old local copies anywhere (`/usr/local/`).
+If all dependencies are present and of a high enough version, skip ahead
+to the Compilation instructions.
 
 ### Building for Linux/BSD on systems with older or missing dependencies
 
-If some of your system dependency libraries are missing or old, then you 
-can download and build newer versions into `$HOME/openscad_deps` by 
-following this process. First, run the script that sets up the 
-environment variables. 
+If some of your system dependency libraries are missing or old, then you
+can download and build newer versions into `$HOME/openscad_deps` by
+following this process. First, run the script that sets up the
+environment variables.
 
     source ./scripts/setenv-unibuild.sh
 
@@ -196,13 +214,17 @@ Then run the script to compile all the prerequisite libraries above:
 
     ./scripts/uni-build-dependencies.sh
 
-Note that huge dependencies like gcc, qt, or glib2 are not included 
-here, only the smaller ones (boost, CGAL, opencsg, etc). After the 
+Note that huge dependencies like gcc, qt, or glib2 are not included
+here, only the smaller ones (boost, CGAL, opencsg, etc). After the
 build, again check dependencies.
 
     ./scripts/check-dependencies.sh
 
 After that, follow the Compilation instructions below.
+
+### Building on Nix
+
+A [development Nix shell](scripts/nix) is included for local, incremental compilation.
 
 ### Building for Windows
 
@@ -210,12 +232,15 @@ OpenSCAD for Windows is usually cross-compiled from Linux. If you wish to
 attempt an MSVC build on Windows, please see this site:
 https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Building_on_Windows
 
-To cross-build, first make sure that you have all necessary dependencies 
+MSVC build support has been added to OpenSCAD. For instructions on how to build it,
+refer to [building with MSVC](doc/win-build.md).
+
+To cross-build, first make sure that you have all necessary dependencies
 of the MXE project ( listed at https://mxe.cc/#requirements ). Don't install
 MXE itself, the scripts below will do that for you under `$HOME/openscad_deps/mxe`
 
-Then get your development tools installed to get GCC. Then after you've 
-cloned this git repository, start a new clean bash shell and run the 
+Then get your development tools installed to get GCC. Then after you've
+cloned this git repository, start a new clean bash shell and run the
 script that sets up the environment variables.
 
     source ./scripts/setenv-mingw-xbuild.sh 64
@@ -224,20 +249,88 @@ Then run the script to download & compile all the prerequisite libraries above:
 
     ./scripts/mingw-x-build-dependencies.sh 64
 
-Note that this process can take several hours, and tens of gigabytes of 
+Note that this process can take several hours, and tens of gigabytes of
 disk space, as it uses the [https://mxe.cc](https://mxe.cc) system to cross-build many
-libraries. After it is complete, build OpenSCAD and package it to an 
+libraries. After it is complete, build OpenSCAD and package it to an
 installer:
 
     ./scripts/release-common.sh mingw64
 
-For a 32-bit Windows cross-build, replace 64 with 32 in the above instructions. 
+For a 32-bit Windows cross-build, replace 64 with 32 in the above instructions.
+
+### Building for WebAssembly
+
+We support building OpenSCAD headless for WebAssembly w/ Emscripten, using a premade Docker image built in [openscad/openscad-wasm](https://github.com/openscad/openscad-wasm) (which also has usage examples)
+
+#### Browser
+
+The following command creates `build-web/openscad.wasm` & `build-web/openscad.js`:
+
+```bash
+./scripts/wasm-base-docker-run.sh emcmake cmake -B build-web -DCMAKE_BUILD_TYPE=Debug -DEXPERIMENTAL=1
+./scripts/wasm-base-docker-run.sh cmake --build build-web -j2
+```
+
+[openscad/openscad-playground](https://github.com/openscad/openscad-playground) uses this WASM build to provide a [Web UI](https://ochafik.com/openscad2/) with a subset of features of OpenSCAD.
+
+> [!NOTE]
+> With a debug build (`-DCMAKE_BUILD_TYPE=Debug`), you can set C++ breakpoints in Firefox and in Chrome (the latter [needs an extension](https://developer.chrome.com/docs/devtools/wasm)).
+
+#### Standalone node.js build
+
+The following command creates `build-node/openscad.js`, which is executable (requires `node`):
+
+```bash
+./scripts/wasm-base-docker-run.sh emcmake cmake -B build-node -DWASM_BUILD_TYPE=node -DCMAKE_BUILD_TYPE=Debug -DEXPERIMENTAL=1
+./scripts/wasm-base-docker-run.sh cmake --build build-node -j2
+build-node/openscad.js --help
+```
+
+> [!NOTE]
+> With a debug build (`-DCMAKE_BUILD_TYPE=Debug`), you can set C++ breakpoints in VSCode + Node ([needs an extension](https://code.visualstudio.com/docs/nodejs/nodejs-debugging#_debugging-webassembly)).
+
+#### node.js module build
+
+The following command creates `build-node/openscad.js`, which is a node module that can be imported into other node programs:
+
+```bash
+./scripts/wasm-base-docker-run.sh emcmake cmake -B build-node -DWASM_BUILD_TYPE=node-module -DCMAKE_BUILD_TYPE=Debug -DEXPERIMENTAL=1
+./scripts/wasm-base-docker-run.sh cmake --build build-node -j2
+```
+
+Example usage:
+
+```js
+import OpenSCAD from "./build-node/openscad.js";
+
+const instance = await OpenSCAD({
+    noInitialRun: true,
+    print: (text) => {
+        console.debug('stdout: ' + text);
+    },
+    printErr: (text) => {
+        console.debug('stderr: ' + text);
+    },
+});
+
+const inFile = "model.scad";
+const outFile = "model.stl";
+
+instance.callMain([
+    inFile,
+    "-o", outFile,
+    "--backend=manifold",
+    "--export-format=binstl",
+]);
+
+// Model is now generated
+```
 
 ### Compilation
 
-First, run `mkdir build && cd build && cmake .. -DEXPERIMENTAL=1` to generate a Makefile.
+First, run `cmake -B build -DEXPERIMENTAL=1` to generate a Makefile in the `build` folder.
 
-Then run `make`. Finally, on Linux you might run `make install` as root.
+Then run `cmake --build build`. Finally, on Linux you might run `cmake --install build` as root.
 
 If you had problems compiling from source, raise a new issue in the
 [issue tracker on the github page](https://github.com/openscad/openscad/issues).
@@ -245,9 +338,9 @@ If you had problems compiling from source, raise a new issue in the
 This site and it's subpages can also be helpful:
 https://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Building_OpenSCAD_from_Sources
 
-Once built, you can run tests with `ctest` from the build directory.
+Once built, you can run tests with `ctest` from the `build` directory.
 
-Note: Both `make` and `ctest` accepts a `-j N` argument for distributing the load over `N` parallel processes.
+Note: Both `cmake --build` and `ctest` accepts a `-j N` argument for distributing the load over `N` parallel processes.
 
 ### Running CI workflows locally
 
@@ -275,7 +368,7 @@ Note: Both `make` and `ctest` accepts a `-j N` argument for distributing the loa
 	```
 
 	Then once you get the console:
-	
+
 	```bash
 	git clone https://github.com/%your username%/openscad.git workspace
 	cd workspace

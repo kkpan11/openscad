@@ -1,7 +1,10 @@
 #pragma once
 
-#include "node.h"
-#include "linalg.h"
+#include <string>
+
+#include "core/ModuleInstantiation.h"
+#include "core/node.h"
+#include "geometry/linalg.h"
 
 class TransformNode : public AbstractNode
 {

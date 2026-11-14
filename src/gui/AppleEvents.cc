@@ -1,9 +1,12 @@
-#include "AppleEvents.h"
-#include <MacTypes.h>
+#include "gui/AppleEvents.h"
+
 #include <AssertMacros.h>
 #include <CoreServices/CoreServices.h>
+#include <MacTypes.h>
+
 #include <QApplication>
-#include "MainWindow.h"
+
+#include "gui/MainWindow.h"
 
 extern "C" {
 OSErr eventHandler(const AppleEvent *ev, AppleEvent *reply, SRefCon refcon);
@@ -11,7 +14,7 @@ OSErr eventHandler(const AppleEvent *ev, AppleEvent *reply, SRefCon refcon);
 
 OSErr eventHandler(const AppleEvent *, AppleEvent *, SRefCon)
 {
-// FIXME: Ugly hack; just using the first MainWindow we can find
+  // FIXME: Ugly hack; just using the first MainWindow we can find
   MainWindow *mainwin = nullptr;
   for (auto& w : QApplication::topLevelWidgets()) {
     mainwin = qobject_cast<MainWindow *>(w);

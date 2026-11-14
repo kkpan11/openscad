@@ -23,16 +23,16 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
+#include "core/DrawingCallback.h"
+
 #include <cmath>
+#include <memory>
+#include <vector>
 
-#include <iostream>
-#include <algorithm>
+#include "geometry/Polygon2d.h"
 
-#include "Polygon2d.h"
-#include "DrawingCallback.h"
-
-DrawingCallback::DrawingCallback(unsigned long fn, double size) :
-  pen(Vector2d(0, 0)), offset(Vector2d(0, 0)), advance(Vector2d(0, 0)), fn(fn), size(size)
+DrawingCallback::DrawingCallback(unsigned long fn, double size)
+  : pen(Vector2d(0, 0)), offset(Vector2d(0, 0)), advance(Vector2d(0, 0)), fn(fn), size(size)
 {
 }
 
@@ -43,6 +43,8 @@ DrawingCallback::~DrawingCallback()
 void DrawingCallback::start_glyph()
 {
   this->polygon = std::make_shared<Polygon2d>();
+  // FIXME: Why do we think that a glyph is sanitized?
+  // This is technically not true, since we don't maintain correct values for the 'positive' flag.
   this->polygon->setSanitized(true);
 }
 
@@ -61,7 +63,7 @@ void DrawingCallback::finish_glyph()
   }
 }
 
-std::vector<std::shared_ptr<const Geometry>> DrawingCallback::get_result()
+std::vector<std::shared_ptr<const Polygon2d>> DrawingCallback::get_result()
 {
   return this->polygons;
 }
@@ -100,12 +102,11 @@ void DrawingCallback::line_to(const Vector2d& to)
 // Quadric Bezier curve
 void DrawingCallback::curve_to(const Vector2d& c1, const Vector2d& to)
 {
-  // NOTE - this could be done better using a chord length iteration (uniform in space) to implement $fa (lot of work, little gain)
+  // NOTE - this could be done better using a chord length iteration (uniform in space) to implement $fa
+  // (lot of work, little gain)
   for (unsigned long idx = 1; idx <= fn; ++idx) {
     const double a = idx * (1.0 / (double)fn);
-    add_vertex(pen * pow(1 - a, 2) +
-               c1 * 2 * pow(1 - a, 1) * a +
-               to * pow(a, 2));
+    add_vertex(pen * pow(1 - a, 2) + c1 * 2 * pow(1 - a, 1) * a + to * pow(a, 2));
   }
   pen = to;
 }
@@ -113,12 +114,11 @@ void DrawingCallback::curve_to(const Vector2d& c1, const Vector2d& to)
 // Cubic Bezier curve
 void DrawingCallback::curve_to(const Vector2d& c1, const Vector2d& c2, const Vector2d& to)
 {
-  // NOTE - this could be done better using a chord length iteration (uniform in space) to implement $fa (lot of work, little gain)
+  // NOTE - this could be done better using a chord length iteration (uniform in space) to implement $fa
+  // (lot of work, little gain)
   for (unsigned long idx = 1; idx <= fn; ++idx) {
     const double a = idx * (1.0 / (double)fn);
-    add_vertex(pen * pow(1 - a, 3) +
-               c1 * 3 * pow(1 - a, 2) * a +
-               c2 * 3 * pow(1 - a, 1) * pow(a, 2) +
+    add_vertex(pen * pow(1 - a, 3) + c1 * 3 * pow(1 - a, 2) * a + c2 * 3 * pow(1 - a, 1) * pow(a, 2) +
                to * pow(a, 3));
   }
   pen = to;

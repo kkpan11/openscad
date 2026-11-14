@@ -23,25 +23,36 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
-#include <cmath>
-#include <cstdio>
-
-#include <iostream>
+#include "core/FreetypeRenderer.h"
 
 #include <fontconfig/fontconfig.h>
+#include <hb-ft.h>
 
-#include "printutils.h"
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <ostream>
+#include <vector>
 
 #include "FontCache.h"
-#include "DrawingCallback.h"
-#include "FreetypeRenderer.h"
-#include "calc.h"
+#include "core/CurveDiscretizer.h"
+#include "core/DrawingCallback.h"
+#include "core/Value.h"
+#include "geometry/linalg.h"
+#include "utils/calc.h"
+#include "utils/printutils.h"
 
 #include FT_OUTLINE_H
 // NOLINTNEXTLINE(bugprone-macro-parentheses)
-#define SCRIPT_UNTAG(tag)   ((uint8_t)((tag) >> 24)) % ((uint8_t)((tag) >> 16)) % ((uint8_t)((tag) >> 8)) % ((uint8_t)(tag))
+#define SCRIPT_UNTAG(tag) \
+  ((uint8_t)((tag) >> 24)) % ((uint8_t)((tag) >> 16)) % ((uint8_t)((tag) >> 8)) % ((uint8_t)(tag))
 
-static inline Vector2d get_scaled_vector(const FT_Vector *ft_vector, double scale) {
+static inline Vector2d get_scaled_vector(const FT_Vector *ft_vector, double scale)
+{
   return {ft_vector->x / scale, ft_vector->y / scale};
 }
 
@@ -81,7 +92,8 @@ int FreetypeRenderer::outline_conic_to_func(const FT_Vector *c1, const FT_Vector
   return 0;
 }
 
-int FreetypeRenderer::outline_cubic_to_func(const FT_Vector *c1, const FT_Vector *c2, const FT_Vector *to, void *user)
+int FreetypeRenderer::outline_cubic_to_func(const FT_Vector *c1, const FT_Vector *c2,
+                                            const FT_Vector *to, void *user)
 {
   auto *cb = reinterpret_cast<DrawingCallback *>(user);
 
@@ -90,8 +102,7 @@ int FreetypeRenderer::outline_cubic_to_func(const FT_Vector *c1, const FT_Vector
 }
 
 // Calculate offsets for horizontal text.
-void FreetypeRenderer::ShapeResults::calc_offsets_horiz(
-  const FreetypeRenderer::Params& params)
+void FreetypeRenderer::ShapeResults::calc_offsets_horiz(const FreetypeRenderer::Params& params)
 {
   if (params.halign == "right") {
     x_offset = -advance_x;
@@ -126,8 +137,7 @@ void FreetypeRenderer::ShapeResults::calc_offsets_horiz(
 }
 
 // Calculate offsets for vertical text.
-void FreetypeRenderer::ShapeResults::calc_offsets_vert(
-  const FreetypeRenderer::Params& params)
+void FreetypeRenderer::ShapeResults::calc_offsets_vert(const FreetypeRenderer::Params& params)
 {
   if (params.halign == "right") {
     x_offset = -right;
@@ -145,8 +155,7 @@ void FreetypeRenderer::ShapeResults::calc_offsets_vert(
 
   if (params.valign == "baseline") {
     LOG(message_group::Warning, params.loc, params.documentPath,
-        "Don't use valign=\"baseline\" with vertical layouts",
-        params.valign);
+        "Don't use valign=\"baseline\" with vertical layouts", params.valign);
     y_offset = 0;
   } else if (params.valign == "center") {
     y_offset = -advance_y / 2.0;
@@ -171,15 +180,13 @@ hb_direction_t FreetypeRenderer::Params::detect_direction(const hb_script_t scri
 
   hbdirection = hb_direction_from_string(direction.c_str(), -1);
   if (hbdirection != HB_DIRECTION_INVALID) {
-    PRINTDB("Explicit direction '%s' for %s",
-            hb_direction_to_string(hbdirection) % text.c_str());
+    PRINTDB("Explicit direction '%s' for %s", hb_direction_to_string(hbdirection) % text.c_str());
     return hbdirection;
   }
 
   hbdirection = hb_script_get_horizontal_direction(script);
   if (hbdirection != HB_DIRECTION_INVALID) {
-    PRINTDB("Detected direction '%s' for %s",
-            hb_direction_to_string(hbdirection) % text.c_str());
+    PRINTDB("Detected direction '%s' for %s", hb_direction_to_string(hbdirection) % text.c_str());
     return hbdirection;
   }
 
@@ -193,14 +200,13 @@ bool FreetypeRenderer::Params::is_ignored_script(const hb_script_t script)
   case HB_SCRIPT_COMMON:
   case HB_SCRIPT_INHERITED:
   case HB_SCRIPT_UNKNOWN:
-  case HB_SCRIPT_INVALID:
-    return true;
-  default:
-    return false;
+  case HB_SCRIPT_INVALID:   return true;
+  default:                  return false;
   }
 }
 
-hb_script_t FreetypeRenderer::Params::detect_script(hb_glyph_info_t *glyph_info, unsigned int glyph_count) const
+hb_script_t FreetypeRenderer::Params::detect_script(hb_glyph_info_t *glyph_info,
+                                                    unsigned int glyph_count) const
 {
   hb_script_t hbscript;
 
@@ -237,7 +243,9 @@ void FreetypeRenderer::Params::detect_properties()
   hb_buffer_destroy(hb_buf);
 
   if (!is_ignored_script(hbscript)) {
-    char script_buf[5] = { 0, };
+    char script_buf[5] = {
+      0,
+    };
     hb_tag_to_string(hb_script_to_iso15924_tag(hbscript), script_buf);
     set_script(script_buf);
   }
@@ -245,7 +253,8 @@ void FreetypeRenderer::Params::detect_properties()
   hb_direction_t hbdirection = detect_direction(hbscript);
   set_direction(hb_direction_to_string(hbdirection));
 
-  auto segments = Calc::get_fragments_from_r(size, fn, fs, fa);
+  int segments = 3;
+  if (discretizer) segments = discretizer->getCircularSegmentCount(size).value_or(segments);
   // The curved segments of most fonts are relatively short, so
   // by using a fraction of the number of full circle segments
   // the resolution will be better matching the detail level of
@@ -254,56 +263,91 @@ void FreetypeRenderer::Params::detect_properties()
   set_segments(text_segments);
 }
 
-FT_Face FreetypeRenderer::Params::get_font_face() const
+std::ostream& operator<<(std::ostream& stream, const FreetypeRenderer::Params& params)
+{
+  stream << "text = \"" << params.text << "\", size = " << params.size
+         << ", spacing = " << params.spacing << ", font = \"" << params.font << "\", direction = \""
+         << params.direction << "\", language = \"" << params.language
+         << (params.script.empty() ? "" : "\", script = \"") << params.script << "\", halign = \""
+         << params.halign << "\", valign = \"" << params.valign;
+  if (params.discretizer) stream << "\", " << *(params.discretizer);
+  return stream;
+}
+
+const FontFacePtr FreetypeRenderer::Params::get_font_face() const
 {
   FontCache *cache = FontCache::instance();
   if (!cache->is_init_ok()) {
-    LOG(message_group::Warning, loc, documentPath,
-        "Font cache initialization failed");
+    LOG(message_group::Warning, loc, documentPath, "Font cache initialization failed");
     return nullptr;
   }
 
-  FT_Face face = cache->get_font(font);
-  if (face == nullptr) {
-    LOG(message_group::Warning, loc, documentPath,
-        "Can't get font %1$s", font);
+  const FontFacePtr face = cache->get_font(font);
+  if (!face) {
+    LOG(message_group::Warning, loc, documentPath, "Can't get font %1$s", font);
     return nullptr;
   }
 
-  FT_Error error = FT_Set_Char_Size(face, 0, scale, 100, 100);
+  // 100 is the wrong value for resolution.  It should be 72.  100 yields a 100:72 scaling factor
+  // because the input size is in points and the output coordinates are in 1/resolution inches.
+  // OpenSCAD doesn't care about inches and points, but this means that the glyphs generated
+  // are about 1.39x as large as they should be, relative to the font size specified.
+  // This is described in issue #4304.
+  //
+  // We don't just change it to 72, because this 100:72 scaling factor has been present
+  // for many years and any model using text() depends on it.  We could fix it here and do
+  // something tricky above, but that has subtle compatibility effects.  Instead, we
+  // introduced a new "em" parameter that lets the user specify the em size of the font,
+  // and we set the size based on that to cancel out the error that we introduce here.
+  FT_Error error = FT_Set_Char_Size(face->face_, 0, scale, 100, 100);
   if (error) {
-    LOG(message_group::Warning, loc, documentPath,
-        "Can't set font size for font %1$s", font);
+    LOG(message_group::Warning, loc, documentPath, "Can't set font size for font %1$s", font);
     return nullptr;
   }
   return face;
 }
 
-void FreetypeRenderer::Params::set(Parameters& parameters)
+FreetypeRenderer::Params::Params(Parameters& parameters)
+  : discretizer(std::make_shared<CurveDiscretizer>(parameters))
 {
-  // Note:
-  // This populates all of the Params entries that text() populates.
-  // Probably some of them are not needed by some callers.
-  // However, we populate them here rather than "knowing" which
-  // ones are and are not needed.
+  // Having these prints a warning if any of these parameters is not
+  // the expected type.
 
-  (void) parameters.valid("size", Value::Type::NUMBER);
-  (void) parameters.valid("text", Value::Type::STRING);
-  (void) parameters.valid("spacing", Value::Type::NUMBER);
-  (void) parameters.valid("font", Value::Type::STRING);
-  (void) parameters.valid("direction", Value::Type::STRING);
-  (void) parameters.valid("language", Value::Type::STRING);
-  (void) parameters.valid("script", Value::Type::STRING);
-  (void) parameters.valid("halign", Value::Type::STRING);
-  (void) parameters.valid("valign", Value::Type::STRING);
+  (void)parameters.valid("size", Value::Type::NUMBER);
+  (void)parameters.valid("em", Value::Type::NUMBER);
+  (void)parameters.valid("text", Value::Type::STRING);
+  (void)parameters.valid("spacing", Value::Type::NUMBER);
+  (void)parameters.valid("font", Value::Type::STRING);
+  (void)parameters.valid("direction", Value::Type::STRING);
+  (void)parameters.valid("language", Value::Type::STRING);
+  (void)parameters.valid("script", Value::Type::STRING);
+  (void)parameters.valid("halign", Value::Type::STRING);
+  (void)parameters.valid("valign", Value::Type::STRING);
 
-  set_fn(parameters["$fn"].toDouble());
-  set_fa(parameters["$fa"].toDouble());
-  set_fs(parameters["$fs"].toDouble());
+  // There is a bug (#4304):  FreetypeRenderer::Params::get_font_face()
+  // will inappropriately apply a scaling factor of 100/72, so
+  // that a specified size of 72 would yield an em-size of 100.
+  // This went undetected for years because the error introduced
+  // was approximately the same as the typical ratio between the
+  // em size and the height of capital letters, and so "size"
+  // was explained as the height of capital letters.
+  // We can't possibly redefine "size" correctly, because there are years of inertia
+  // behind the bug.  Instead, we define a new parameter "em" that sets the em size correctly.
+  // We do not fix the bug down where it actually occurs, because that has subtle
+  // compatibility effects.  Instead, we just correct for it here.
+  const Value& emParam = parameters.get("em");
+  if (emParam.isDefined()) {
+    if (parameters.get("size").isDefined()) {
+      LOG(message_group::Warning, loc, documentPath, "%1$s: \"size\" ignored when \"em\" is set",
+          parameters.get_caller());
+    }
+    size = emParam.toDouble() * 72.0 / 100.0;
+  } else {
+    size = parameters.get("size", 10.0);
+  }
 
-  set_size(parameters.get("size", 10.0));
   set_text(parameters.get("text", ""));
-  set_spacing(parameters.get("spacing", 1.0));
+  spacing = parameters.get("spacing", 1.0);
   set_font(parameters.get("font", ""));
   set_direction(parameters.get("direction", ""));
   set_language(parameters.get("language", "en"));
@@ -312,22 +356,32 @@ void FreetypeRenderer::Params::set(Parameters& parameters)
   set_valign(parameters.get("valign", "default"));
 }
 
-
-FreetypeRenderer::ShapeResults::ShapeResults(
-  const FreetypeRenderer::Params& params)
+FreetypeRenderer::Params::Params(const ParamsOptions& opts)
+  : size(opts.size), spacing(opts.spacing), discretizer(opts.curve_discretizer), loc(opts.loc)
 {
-  FT_Face face = params.get_font_face();
-  if (face == nullptr) {
+  set_text(opts.text.value_or(""));
+  set_font(opts.font.value_or(""));
+  set_direction(opts.direction.value_or(""));
+  set_language(opts.language.value_or("en"));
+  set_script(opts.script.value_or(""));
+  set_halign(opts.halign.value_or("default"));
+  set_valign(opts.valign.value_or("default"));
+}
+
+FreetypeRenderer::ShapeResults::ShapeResults(const FreetypeRenderer::Params& params)
+{
+  const FontFacePtr face = params.get_font_face();
+  if (!face) {
     return;
   }
 
-  hb_ft_font = hb_ft_font_create(face, nullptr);
+  hb_ft_font = hb_ft_font_create(face->face_, nullptr);
 
   hb_buf = hb_buffer_create();
   hb_buffer_set_direction(hb_buf, hb_direction_from_string(params.direction.c_str(), -1));
   hb_buffer_set_script(hb_buf, hb_script_from_string(params.script.c_str(), -1));
   hb_buffer_set_language(hb_buf, hb_language_from_string(params.language.c_str(), -1));
-  if (FontCache::instance()->is_windows_symbol_font(face)) {
+  if (FontCache::instance()->is_windows_symbol_font(face->face_)) {
     // Special handling for symbol fonts like Webdings.
     // see http://www.microsoft.com/typography/otspec/recom.htm
     //
@@ -345,13 +399,27 @@ FreetypeRenderer::ShapeResults::ShapeResults(
       }
     } else {
       LOG(message_group::Warning, params.loc, params.documentPath,
-          "Ignoring text with invalid UTF-8 encoding: \"%1$s\"",
-          params.text.c_str());
+          "Ignoring text with invalid UTF-8 encoding: \"%1$s\"", params.text.c_str());
     }
   } else {
-    hb_buffer_add_utf8(hb_buf, params.text.c_str(), strlen(params.text.c_str()), 0, strlen(params.text.c_str()));
+    hb_buffer_add_utf8(hb_buf, params.text.c_str(), strlen(params.text.c_str()), 0,
+                       strlen(params.text.c_str()));
   }
-  hb_shape(hb_ft_font, hb_buf, nullptr, 0);
+
+  std::vector<hb_feature_t> features;
+  features.reserve(face->features_.size());
+  std::transform(begin(face->features_), end(face->features_), std::back_inserter(features),
+                 [](const std::string& s) {
+                   hb_feature_t f;
+                   hb_feature_from_string(s.c_str(), s.size(), &f);
+                   return f;
+                 });
+  std::vector<hb_feature_t *> features_ptr;
+  features.reserve(features.size());
+  std::transform(begin(features), end(features), std::back_inserter(features_ptr),
+                 [](hb_feature_t& f) { return &f; });
+
+  hb_shape(hb_ft_font, hb_buf, features_ptr.data()[0], features_ptr.size());
 
   unsigned int glyph_count;
   hb_glyph_info_t *glyph_info = hb_buffer_get_glyph_infos(hb_buf, &glyph_count);
@@ -361,7 +429,7 @@ FreetypeRenderer::ShapeResults::ShapeResults(
   for (unsigned int idx = 0; idx < glyph_count; ++idx) {
     FT_Error error;
     FT_UInt glyph_index = glyph_info[idx].codepoint;
-    error = FT_Load_Glyph(face, glyph_index, FT_LOAD_DEFAULT);
+    error = FT_Load_Glyph(face->face_, glyph_index, FT_LOAD_DEFAULT);
     if (error) {
       LOG(message_group::Warning, params.loc, params.documentPath,
           "Could not load glyph %1$u"
@@ -371,7 +439,7 @@ FreetypeRenderer::ShapeResults::ShapeResults(
     }
 
     FT_Glyph glyph;
-    error = FT_Get_Glyph(face->glyph, &glyph);
+    error = FT_Get_Glyph(face->face_->glyph, &glyph);
     if (error) {
       LOG(message_group::Warning, params.loc, params.documentPath,
           "Could not get glyph %1$u"
@@ -412,15 +480,11 @@ FreetypeRenderer::ShapeResults::ShapeResults(
       const double gxoff = glyph.get_x_offset();
       const double gyoff = glyph.get_y_offset();
 
-      left = std::min(left,
-                      advance_x + gxoff + bbox.xMin / scale);
-      right = std::max(right,
-                       advance_x + gxoff + bbox.xMax / scale);
+      left = std::min(left, advance_x + gxoff + bbox.xMin / scale);
+      right = std::max(right, advance_x + gxoff + bbox.xMax / scale);
 
-      top = std::max(top,
-                     advance_y + gyoff + bbox.yMax / scale);
-      bottom = std::min(bottom,
-                        advance_y + gyoff + bbox.yMin / scale);
+      top = std::max(top, advance_y + gyoff + bbox.yMax / scale);
+      bottom = std::min(bottom, advance_y + gyoff + bbox.yMin / scale);
     }
 
     advance_x += glyph.get_x_advance() * params.spacing;
@@ -431,8 +495,7 @@ FreetypeRenderer::ShapeResults::ShapeResults(
   // contributed they will flip.  If they're still reversed,
   // there was no ink.
   if (right >= left) {
-    if (HB_DIRECTION_IS_HORIZONTAL(
-          hb_buffer_get_direction(hb_buf))) {
+    if (HB_DIRECTION_IS_HORIZONTAL(hb_buffer_get_direction(hb_buf))) {
       calc_offsets_horiz(params);
     } else {
       calc_offsets_vert(params);
@@ -463,42 +526,30 @@ FreetypeRenderer::ShapeResults::~ShapeResults()
   }
 }
 
-FreetypeRenderer::FontMetrics::FontMetrics(
-  const FreetypeRenderer::Params& params)
+FreetypeRenderer::FontMetrics::FontMetrics(const FreetypeRenderer::Params& params)
 {
   ok = false;
 
-  FT_Face face = params.get_font_face();
-  if (face == nullptr) {
+  const FontFacePtr face = params.get_font_face();
+  if (!face) {
     return;
   }
 
   // scale is the width of an em in 26.6 fractional points
   // @ 100dpi = 100/72 pixels per point
-  const FT_Size_Metrics *size_metrics = &face->size->metrics;
-  nominal_ascent =
-    FT_MulFix(face->ascender, size_metrics->y_scale) / scale
-    * params.size;
-  nominal_descent =
-    FT_MulFix(face->descender, size_metrics->y_scale) / scale
-    * params.size;
-  max_ascent =
-    FT_MulFix(face->bbox.yMax, size_metrics->y_scale) / scale
-    * params.size;
-  max_descent =
-    FT_MulFix(face->bbox.yMin, size_metrics->y_scale) / scale
-    * params.size;
-  interline =
-    FT_MulFix(face->height, size_metrics->y_scale) / scale
-    * params.size;
-  family_name = face->family_name;
-  style_name = face->style_name;
+  const FT_Size_Metrics *size_metrics = &face->face_->size->metrics;
+  nominal_ascent = FT_MulFix(face->face_->ascender, size_metrics->y_scale) / scale * params.size;
+  nominal_descent = FT_MulFix(face->face_->descender, size_metrics->y_scale) / scale * params.size;
+  max_ascent = FT_MulFix(face->face_->bbox.yMax, size_metrics->y_scale) / scale * params.size;
+  max_descent = FT_MulFix(face->face_->bbox.yMin, size_metrics->y_scale) / scale * params.size;
+  interline = FT_MulFix(face->face_->height, size_metrics->y_scale) / scale * params.size;
+  family_name = face->face_->family_name;
+  style_name = face->face_->style_name;
 
   ok = true;
 }
 
-FreetypeRenderer::TextMetrics::TextMetrics(
-  const FreetypeRenderer::Params& params)
+FreetypeRenderer::TextMetrics::TextMetrics(const FreetypeRenderer::Params& params)
 {
   ok = false;
 
@@ -541,7 +592,8 @@ FreetypeRenderer::TextMetrics::TextMetrics(
   ok = true;
 }
 
-std::vector<std::shared_ptr<const Geometry>> FreetypeRenderer::render(const FreetypeRenderer::Params& params) const
+std::vector<std::shared_ptr<const Polygon2d>> FreetypeRenderer::render(
+  const FreetypeRenderer::Params& params) const
 {
   ShapeResults sr(params);
 
@@ -552,9 +604,7 @@ std::vector<std::shared_ptr<const Geometry>> FreetypeRenderer::render(const Free
   DrawingCallback callback(params.segments, params.size);
   for (const auto& glyph : sr.glyph_array) {
     callback.start_glyph();
-    callback.set_glyph_offset(
-      sr.x_offset + glyph.get_x_offset(),
-      sr.y_offset + glyph.get_y_offset());
+    callback.set_glyph_offset(sr.x_offset + glyph.get_x_offset(), sr.y_offset + glyph.get_y_offset());
     FT_Outline outline = reinterpret_cast<FT_OutlineGlyph>(glyph.get_glyph())->outline;
     FT_Outline_Decompose(&outline, &funcs, &callback);
 
@@ -564,5 +614,9 @@ std::vector<std::shared_ptr<const Geometry>> FreetypeRenderer::render(const Free
     callback.finish_glyph();
   }
 
+  // FIXME: The returned Polygon2d currently contains only outlines with the 'positive' flag set to true,
+  // and where the winding order determines if the outlines should be interpreted as polygons or holes.
+  // We have to rely on any downstream processing to be aware of the winding order, and ignore the
+  // 'positive' flag.
   return callback.get_result();
 }

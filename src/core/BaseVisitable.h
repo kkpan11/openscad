@@ -1,9 +1,7 @@
 #pragma once
 
-#include <iostream>
-
 // FIXME: Default constructor Response()
-enum class Response {ContinueTraversal, AbortTraversal, PruneTraversal};
+enum class Response { ContinueTraversal, AbortTraversal, PruneTraversal };
 
 class State;
 
@@ -25,9 +23,11 @@ class BaseVisitable
 public:
   virtual ~BaseVisitable() = default;
   virtual Response accept(State&, BaseVisitor&) const = 0;
+
 protected:
   template <class T>
-  static Response acceptImpl(State& state, const T& node, BaseVisitor& visitor) {
+  static Response acceptImpl(State& state, const T& node, BaseVisitor& visitor)
+  {
     if (auto *p = dynamic_cast<Visitor<T> *>(&visitor)) {
       return p->visit(state, node);
     }
@@ -38,7 +38,8 @@ protected:
   }
 };
 
-#define VISITABLE() \
-        Response accept(State &state, BaseVisitor &visitor) const override { \
-          return acceptImpl(state, *this, visitor); \
-        }
+#define VISITABLE()                                                  \
+  Response accept(State& state, BaseVisitor& visitor) const override \
+  {                                                                  \
+    return acceptImpl(state, *this, visitor);                        \
+  }

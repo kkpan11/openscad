@@ -6,11 +6,12 @@
 
 #include <QString>
 
-#include "AutoUpdater.h"
+#include "gui/AutoUpdater.h"
 
 class SparkleAutoUpdater : public AutoUpdater
 {
   Q_OBJECT;
+
 public:
   SparkleAutoUpdater();
   ~SparkleAutoUpdater();

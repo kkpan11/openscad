@@ -1,25 +1,32 @@
 #pragma once
 
-#include <string>
+#include <filesystem>
 #include <memory>
-#include <boost/filesystem.hpp>
+#include <ostream>
+#include <string>
 #include <utility>
-namespace fs = boost::filesystem;
+namespace fs = std::filesystem;
 
 #include <string>
 
 class Location
 {
-
 public:
-  Location(int firstLine, int firstCol, int lastLine, int lastCol,
-           std::shared_ptr<fs::path> path)
-    : first_line(firstLine), first_col(firstCol), last_line(lastLine),
-    last_col(lastCol), path(std::move(path)) {
+  Location(int firstLine, int firstCol, int lastLine, int lastCol, std::shared_ptr<fs::path> path)
+    : first_line(firstLine),
+      first_col(firstCol),
+      last_line(lastLine),
+      last_col(lastCol),
+      path(std::move(path))
+  {
   }
 
   [[nodiscard]] std::string fileName() const { return path ? path->generic_string() : ""; }
-  [[nodiscard]] const fs::path& filePath() const { return *path; }
+  [[nodiscard]] const fs::path& filePath() const
+  {
+    static const fs::path empty_path;
+    return path ? *path : empty_path;
+  }
   [[nodiscard]] int firstLine() const { return first_line; }
   [[nodiscard]] int firstColumn() const { return first_col; }
   [[nodiscard]] int lastLine() const { return last_line; }
@@ -32,6 +39,7 @@ public:
   bool operator!=(Location const& rhs);
 
   static const Location NONE;
+
 private:
   int first_line;
   int first_col;

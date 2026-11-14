@@ -1,10 +1,14 @@
 #pragma once
 
-#include <json.hpp>
+#include <cstddef>
+#include <memory>
+#include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
-#include "ParameterSet.h"
+#include "core/customizer/ParameterSet.h"
+#include "json/json.hpp"
 using json = nlohmann::json;
 
 class SourceFile;
@@ -16,7 +20,8 @@ public:
   enum class ParameterType { Bool, String, Number, Vector, Enum };
 
   virtual ~ParameterObject() = default;
-  static std::unique_ptr<ParameterObject> fromAssignment(const Assignment *assignment);
+  static std::unique_ptr<ParameterObject> fromAssignment(const Assignment *assignment,
+                                                         const std::string& docPath);
 
   [[nodiscard]] ParameterType type() const { return type_; }
   [[nodiscard]] const std::string& name() const { return name_; }
@@ -30,8 +35,10 @@ public:
   virtual void apply(Assignment *assignment) const = 0;
 
 protected:
-  ParameterObject(std::string name, std::string description, std::string group, ParameterType type) :
-    type_(type), name_(std::move(name)), description_(std::move(description)), group_(std::move(group)) {}
+  ParameterObject(std::string name, std::string description, std::string group, ParameterType type)
+    : type_(type), name_(std::move(name)), description_(std::move(description)), group_(std::move(group))
+  {
+  }
 
   ParameterType type_;
   std::string name_;
@@ -42,13 +49,13 @@ protected:
 class BoolParameter : public ParameterObject
 {
 public:
-  BoolParameter(
-    const std::string& name, const std::string& description, const std::string& group,
-    bool defaultValue
-    ) :
-    ParameterObject(name, description, group, ParameterObject::ParameterType::Bool),
-    value(defaultValue), defaultValue(defaultValue)
-  {}
+  BoolParameter(const std::string& name, const std::string& description, const std::string& group,
+                bool defaultValue)
+    : ParameterObject(name, description, group, ParameterObject::ParameterType::Bool),
+      value(defaultValue),
+      defaultValue(defaultValue)
+  {
+  }
 
   void reset() override { value = defaultValue; }
   bool importValue(boost::property_tree::ptree encodedValue, bool store) override;
@@ -63,11 +70,8 @@ public:
 class StringParameter : public ParameterObject
 {
 public:
-  StringParameter(
-    const std::string& name, const std::string& description, const std::string& group,
-    const std::string& defaultValue,
-    boost::optional<size_t> maximumSize
-    );
+  StringParameter(const std::string& name, const std::string& description, const std::string& group,
+                  const std::string& defaultValue, boost::optional<size_t> maximumSize);
 
   void reset() override { value = defaultValue; }
   bool importValue(boost::property_tree::ptree encodedValue, bool store) override;
@@ -83,15 +87,17 @@ public:
 class NumberParameter : public ParameterObject
 {
 public:
-  NumberParameter(
-    const std::string& name, const std::string& description, const std::string& group,
-    double defaultValue,
-    boost::optional<double> minimum, boost::optional<double> maximum, boost::optional<double> step
-    ) :
-    ParameterObject(name, description, group, ParameterObject::ParameterType::Number),
-    value(defaultValue), defaultValue(defaultValue),
-    minimum(minimum), maximum(maximum), step(step)
-  {}
+  NumberParameter(const std::string& name, const std::string& description, const std::string& group,
+                  double defaultValue, boost::optional<double> minimum, boost::optional<double> maximum,
+                  boost::optional<double> step)
+    : ParameterObject(name, description, group, ParameterObject::ParameterType::Number),
+      value(defaultValue),
+      defaultValue(defaultValue),
+      minimum(minimum),
+      maximum(maximum),
+      step(step)
+  {
+  }
 
   void reset() override { value = defaultValue; }
   bool importValue(boost::property_tree::ptree encodedValue, bool store) override;
@@ -109,15 +115,17 @@ public:
 class VectorParameter : public ParameterObject
 {
 public:
-  VectorParameter(
-    const std::string& name, const std::string& description, const std::string& group,
-    const std::vector<double>& defaultValue,
-    boost::optional<double> minimum, boost::optional<double> maximum, boost::optional<double> step
-    ) :
-    ParameterObject(name, description, group, ParameterObject::ParameterType::Vector),
-    value(defaultValue), defaultValue(defaultValue),
-    minimum(minimum), maximum(maximum), step(step)
-  {}
+  VectorParameter(const std::string& name, const std::string& description, const std::string& group,
+                  const std::vector<double>& defaultValue, boost::optional<double> minimum,
+                  boost::optional<double> maximum, boost::optional<double> step)
+    : ParameterObject(name, description, group, ParameterObject::ParameterType::Vector),
+      value(defaultValue),
+      defaultValue(defaultValue),
+      minimum(minimum),
+      maximum(maximum),
+      step(step)
+  {
+  }
 
   void reset() override { value = defaultValue; }
   bool importValue(boost::property_tree::ptree encodedValue, bool store) override;
@@ -141,15 +149,14 @@ public:
     EnumValue value;
   };
 
-  EnumParameter(
-    const std::string& name, const std::string& description, const std::string& group,
-    int defaultValueIndex,
-    std::vector<EnumItem> items
-    ) :
-    ParameterObject(name, description, group, ParameterObject::ParameterType::Enum),
-    valueIndex(defaultValueIndex), defaultValueIndex(defaultValueIndex),
-    items(std::move(items))
-  {}
+  EnumParameter(const std::string& name, const std::string& description, const std::string& group,
+                int defaultValueIndex, std::vector<EnumItem> items)
+    : ParameterObject(name, description, group, ParameterObject::ParameterType::Enum),
+      valueIndex(defaultValueIndex),
+      defaultValueIndex(defaultValueIndex),
+      items(std::move(items))
+  {
+  }
 
   void reset() override { valueIndex = defaultValueIndex; }
   bool importValue(boost::property_tree::ptree encodedValue, bool store) override;

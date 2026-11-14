@@ -1,5 +1,7 @@
-#include "OffscreenView.h"
-#include "system-gl.h"
+#include "glview/OffscreenView.h"
+#include "glview/system-gl.h"
+#include <iostream>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -8,26 +10,30 @@
 #include <fstream>
 #include <vector>
 
-#include "imageutils.h"
-#include "printutils.h"
-#include "OffscreenContextFactory.h"
+#include "io/imageutils.h"
+#include "utils/printutils.h"
+#include "glview/OffscreenContextFactory.h"
+#include "glview/fbo.h"
 #if defined(USE_GLEW) || defined(OPENCSG_GLEW)
-#include "glew-utils.h"
+#include "glview/glew-utils.h"
+#endif
+#ifdef ENABLE_OSMESA
+#include "glview/OffscreenContextOSMesa.h"
 #endif
 
 namespace {
 
-  /*!
-   Capture framebuffer from OpenGL and write it to the given ostream.
-   Called by save_framebuffer() from platform-specific code.
- */
+/*!
+ Capture framebuffer from OpenGL and write it to the given ostream.
+ Called by save_framebuffer() from platform-specific code.
+*/
 bool save_framebuffer(const OpenGLContext *ctx, std::ostream& output)
 {
   if (!ctx) return false;
 
   const auto pixels = ctx->getFramebuffer();
 
-  const size_t samplesPerPixel = 4; // R, G, B and A
+  const size_t samplesPerPixel = 4;  // R, G, B and A
   // Flip it vertically - images read from OpenGL buffers are upside-down
   std::vector<uint8_t> flippedBuffer(samplesPerPixel * ctx->height() * ctx->width());
   flip_image(&pixels[0], flippedBuffer.data(), samplesPerPixel, ctx->width(), ctx->height());
@@ -45,7 +51,8 @@ OffscreenView::OffscreenView(uint32_t width, uint32_t height)
     .majorGLVersion = 2,
     .minorGLVersion = 0,
   };
-  auto provider = OffscreenContextFactory::defaultProvider();
+  const char *env_provider = getenv("OPENSCAD_OFFSCREEN_CONTEXT");
+  auto provider = env_provider ? env_provider : OffscreenContextFactory::defaultProvider();
   // We cannot initialize GLX GLEW with an EGL context:
   // https://github.com/nigels-com/glew/issues/273
   // ..so if we're using GLEW, default to creating a GLX context.
@@ -71,22 +78,30 @@ OffscreenView::OffscreenView(uint32_t width, uint32_t height)
   if (!initializeGlew()) {
     throw OffscreenViewException("Unable to initialize Glew");
   }
-#endif // USE_GLEW
+#endif  // USE_GLEW
 #ifdef USE_GLAD
   // We could ask for gladLoadGLES2UserPtr() here if we want to use GLES2+
-  const auto version = gladLoaderLoadGL();
+  int version = 0;
+#ifdef ENABLE_OSMESA
+  if (!strcmp(provider, "osmesa")) {
+    version = gladLoadGL(reinterpret_cast<GLADloadfunc>(OSMesaGetProcAddress));
+  } else
+#endif
+  {
+    version = gladLoaderLoadGL();
+  }
   if (version == 0) {
     throw OffscreenViewException("Unable to initialize GLAD");
   }
   PRINTDB("GLAD: Loaded OpenGL %d.%d", GLAD_VERSION_MAJOR(version) % GLAD_VERSION_MINOR(version));
-#endif // USE_GLAD
+#endif  // USE_GLAD
 
-#endif // NULLGL
+#endif  // NULLGL
 
   PRINTD(gl_dump());
 
-  this->fbo = fbo_new();
-  if (!fbo_init(this->fbo, width, height)) {
+  this->fbo = createFBO(width, height);
+  if (!fbo) {
     throw OffscreenViewException("Unable to create FBO");
   }
   GLView::initializeGL();
@@ -95,8 +110,7 @@ OffscreenView::OffscreenView(uint32_t width, uint32_t height)
 
 OffscreenView::~OffscreenView()
 {
-  fbo_unbind(this->fbo);
-  fbo_delete(this->fbo);
+  fbo.reset();
 }
 
 #ifdef ENABLE_OPENCSG

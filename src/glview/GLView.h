@@ -17,20 +17,28 @@
 
  */
 
+#include <memory>
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <string>
-#include <iostream>
-#include "Camera.h"
-#include "ColorMap.h"
-#include "system-gl.h"
-#include "Selection.h"
-#include "Renderer.h"
+#include <vector>
+#include "glview/Camera.h"
+#include "glview/ShaderUtils.h"
+#include "geometry/linalg.h"
+#include "glview/ColorMap.h"
+#include "glview/system-gl.h"
+#include "core/Selection.h"
+#include "glview/Renderer.h"
 
 class GLView
 {
 public:
   GLView();
+  virtual ~GLView();
+
+  void setupShader();
+  void teardownShader();
+
   void setRenderer(std::shared_ptr<Renderer> r);
   [[nodiscard]] Renderer *getRenderer() const { return this->renderer.get(); }
 
@@ -39,7 +47,7 @@ public:
   virtual void paintGL();
 
   void setCamera(const Camera& cam);
-  void setupCamera() ;
+  void setupCamera();
 
   void setColorScheme(const ColorScheme& cs);
   void setColorScheme(const std::string& cs);
@@ -51,8 +59,6 @@ public:
   void setShowScaleProportional(bool enabled) { this->showscale = enabled; }
   [[nodiscard]] bool showEdges() const { return this->showedges; }
   void setShowEdges(bool enabled) { this->showedges = enabled; }
-  [[nodiscard]] bool showFaces() const { return this->showfaces; }
-  void setShowFaces(bool enabled) { this->showfaces = enabled; }
   [[nodiscard]] bool showCrosshairs() const { return this->showcrosshairs; }
   void setShowCrosshairs(bool enabled) { this->showcrosshairs = enabled; }
 
@@ -60,15 +66,13 @@ public:
   [[nodiscard]] virtual std::string getRendererInfo() const = 0;
   virtual float getDPI() { return 1.0f; }
 
-  virtual ~GLView() = default;
-
+  std::unique_ptr<ShaderUtils::ShaderInfo> edge_shader;
   std::shared_ptr<Renderer> renderer;
   const ColorScheme *colorscheme;
   Camera cam;
   double far_far_away;
   double aspectratio;
   bool showaxes;
-  bool showfaces;
   bool showedges;
   bool showcrosshairs;
   bool showscale;
@@ -84,7 +88,8 @@ public:
   virtual void display_opencsg_warning() = 0;
   int opencsg_id;
 #endif
-  void showObject(const SelectedObject &pt,const Vector3d &eyedir);
+  void showObject(const SelectedObject& pt, const Vector3d& eyedir);
+
 private:
   void showCrosshairs(const Color4f& col);
   void showAxes(const Color4f& col);

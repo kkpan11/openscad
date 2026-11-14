@@ -25,35 +25,40 @@
  */
 #pragma once
 
-#include <QTimer>
 #include <QObject>
+#include <QTimer>
+#include <cstddef>
+#include <string>
 
-#include "InputDriver.h"
-#include "InputDriverEvent.h"
+#include "core/Settings.h"
+#include "gui/input/InputDriverEvent.h"
 
 class InputEventMapper : public QObject, public InputEventHandler
 {
   Q_OBJECT
 
+public:
+  constexpr static inline size_t getMaxButtons() { return Settings::max_buttons; }
+  constexpr static inline size_t getMaxAxis() { return Settings::max_axis; }
+
 private:
   QTimer *timer;
-  double axisRawValue[InputDriver::max_axis];
-  double axisTrimValue[InputDriver::max_axis];
-  double axisDeadzone[InputDriver::max_axis];
-  QString actions[InputDriver::max_buttons];
+  double axisRawValue[Settings::max_axis];
+  double axisTrimValue[Settings::max_axis];
+  double axisDeadzone[Settings::max_axis];
+  QString actions[Settings::max_buttons];
   int translate[6];
   int rotate[6];
   int zoom;
   int zoom2;
-  volatile bool stopRequest;
 
   double scale(double val);
   double getAxisValue(int config);
   int parseSettingValue(const std::string& val);
   bool generateDeferredEvents();
   void considerGeneratingDeferredEvents();
-  bool button_state[InputDriver::max_buttons];
-  bool button_state_last[InputDriver::max_buttons];
+  bool button_state[Settings::max_buttons];
+  bool button_state_last[Settings::max_buttons];
 
   static InputEventMapper *self;
 
@@ -66,6 +71,7 @@ private:
 public:
   InputEventMapper();
 
+  void start();
   void stop();
 
   void onAxisChanged(class InputEventAxisChanged *event) override;
@@ -85,8 +91,10 @@ public:
   void onAxisTrimReset();
 
   static InputEventMapper *instance();
-  static size_t getMaxButtons();
-  static size_t getMaxAxis();
+
+  static Settings::SettingsEntryString& inputButtonSettings(size_t id);
+  static Settings::SettingsEntryDouble& axisTrimSettings(size_t id);
+  static Settings::SettingsEntryDouble& axisDeadzoneSettings(size_t id);
 
 private slots:
   void onTimer();

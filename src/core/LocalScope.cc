@@ -1,8 +1,17 @@
-#include "Assignment.h"
-#include "LocalScope.h"
-#include "ModuleInstantiation.h"
-#include "UserModule.h"
-#include "function.h"
+#include "core/LocalScope.h"
+
+#include <cassert>
+#include <cstddef>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <vector>
+
+#include "core/Assignment.h"
+#include "core/ModuleInstantiation.h"
+#include "core/UserModule.h"
+#include "core/function.h"
 #include "core/node.h"
 
 void LocalScope::addModuleInst(const std::shared_ptr<ModuleInstantiation>& modinst)
@@ -34,6 +43,26 @@ void LocalScope::addAssignment(const std::shared_ptr<Assignment>& assignment)
   this->assignments.push_back(assignment);
 }
 
+template <>
+std::optional<UserFunction *> LocalScope::lookup(const std::string& name) const
+{
+  const auto& search = this->functions.find(name);
+  if (search != this->functions.end()) {
+    return search->second.get();
+  }
+  return {};
+}
+
+template <>
+std::optional<UserModule *> LocalScope::lookup(const std::string& name) const
+{
+  const auto& search = this->modules.find(name);
+  if (search != this->modules.end()) {
+    return search->second.get();
+  }
+  return {};
+}
+
 void LocalScope::print(std::ostream& stream, const std::string& indent, const bool inlined) const
 {
   for (const auto& f : this->astFunctions) {
@@ -50,10 +79,11 @@ void LocalScope::print(std::ostream& stream, const std::string& indent, const bo
   }
 }
 
-std::shared_ptr<AbstractNode> LocalScope::instantiateModules(const std::shared_ptr<const Context>& context, const std::shared_ptr<AbstractNode> &target) const
+std::shared_ptr<AbstractNode> LocalScope::instantiateModules(
+  const std::shared_ptr<const Context>& context, const std::shared_ptr<AbstractNode>& target) const
 {
   for (const auto& modinst : this->moduleInstantiations) {
-    auto node = modinst->evaluate(context);
+    const auto node = modinst->evaluate(context);
     if (node) {
       target->children.push_back(node);
     }
@@ -61,11 +91,13 @@ std::shared_ptr<AbstractNode> LocalScope::instantiateModules(const std::shared_p
   return target;
 }
 
-std::shared_ptr<AbstractNode> LocalScope::instantiateModules(const std::shared_ptr<const Context>& context, const std::shared_ptr<AbstractNode> &target, const std::vector<size_t>& indices) const
+std::shared_ptr<AbstractNode> LocalScope::instantiateModules(
+  const std::shared_ptr<const Context>& context, const std::shared_ptr<AbstractNode>& target,
+  const std::vector<size_t>& indices) const
 {
   for (size_t index : indices) {
     assert(index < this->moduleInstantiations.size());
-    auto node = moduleInstantiations[index]->evaluate(context);
+    const auto node = moduleInstantiations[index]->evaluate(context);
     if (node) {
       target->children.push_back(node);
     }

@@ -1,8 +1,14 @@
-#include "ParameterText.h"
+#include "gui/parameter/ParameterText.h"
 
-ParameterText::ParameterText(QWidget *parent, StringParameter *parameter, DescriptionStyle descriptionStyle) :
-  ParameterVirtualWidget(parent, parameter),
-  parameter(parameter)
+#include <QString>
+#include <QWidget>
+#include <string>
+
+#include "gui/parameter/ParameterVirtualWidget.h"
+
+ParameterText::ParameterText(QWidget *parent, StringParameter *parameter,
+                             DescriptionStyle descriptionStyle)
+  : ParameterVirtualWidget(parent, parameter), parameter(parameter)
 {
   setupUi(this);
   descriptionWidget->setDescription(parameter, descriptionStyle);
@@ -11,12 +17,13 @@ ParameterText::ParameterText(QWidget *parent, StringParameter *parameter, Descri
     lineEdit->setMaxLength(*parameter->maximumSize);
   }
 
-  connect(lineEdit, SIGNAL(textEdited(const QString&)), this, SLOT(onEdit(const QString&)));
-  connect(lineEdit, SIGNAL(editingFinished()), this, SLOT(onEditingFinished()));
+  connect(lineEdit, &QLineEdit::textEdited, this, &ParameterText::onEdit);
+  connect(lineEdit, &QLineEdit::editingFinished, this, &ParameterText::onEditingFinished);
   ParameterText::setValue();
 }
 
-void ParameterText::valueApplied() {
+void ParameterText::valueApplied()
+{
   lastApplied = lastSent;
 }
 
@@ -32,7 +39,8 @@ void ParameterText::onEdit(const QString& text)
   }
 }
 
-void ParameterText::onEditingFinished() {
+void ParameterText::onEditingFinished()
+{
 #ifdef DEBUG
   PRINTD("editing finished");
 #endif

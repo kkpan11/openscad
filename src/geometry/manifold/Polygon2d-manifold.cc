@@ -1,8 +1,6 @@
-#include "Polygon2d.h"
-#include "PolySet.h"
-#include "printutils.h"
-
-#include <iostream>
+#include "geometry/PolySet.h"
+#include "geometry/Polygon2d.h"
+#include "utils/printutils.h"
 
 #ifndef ENABLE_CGAL
 /*!

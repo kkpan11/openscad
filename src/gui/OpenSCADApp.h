@@ -1,7 +1,12 @@
 #pragma once
 
 #include <QApplication>
-#include "WindowManager.h"
+#include <QEvent>
+#include <QObject>
+#include <QString>
+
+#include "glview/RenderSettings.h"
+#include "gui/WindowManager.h"
 
 class QProgressDialog;
 
@@ -14,19 +19,25 @@ public:
   ~OpenSCADApp() override;
 
   bool notify(QObject *object, QEvent *event) override;
-  void workaround_QTBUG_65592(QObject *object, QEvent *event);
   void requestOpenFile(const QString& filename);
+
+  // See comments in OpenSCADApp.cc.
+  static void closeApp();
 
 public slots:
   void showFontCacheDialog();
   void hideFontCacheDialog();
-  void releaseQSettingsCached();
+  void setApplicationFont(const QString& family, uint size);
+  void setRenderBackend3D(RenderBackend3D backend);
 
 public:
   WindowManager windowManager;
 
 private:
   QProgressDialog *fontCacheDialog{nullptr};
+
+signals:
+  void backend3DChanged();
 };
 
 #define scadApp (static_cast<OpenSCADApp *>(QCoreApplication::instance()))

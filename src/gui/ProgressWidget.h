@@ -1,8 +1,10 @@
 #pragma once
 
-#include "qtgettext.h"
-#include "ui_ProgressWidget.h"
 #include <QElapsedTimer>
+#include <QWidget>
+
+#include "gui/qtgettext.h"
+#include "ui_ProgressWidget.h"
 
 class ProgressWidget : public QWidget, public Ui::ProgressWidget
 {
@@ -19,6 +21,9 @@ public slots:
   void setValue(int progress);
   int value() const;
   void cancel();
+
+private slots:
+  void on_stopButton_clicked();
 
 signals:
   void requestShow();

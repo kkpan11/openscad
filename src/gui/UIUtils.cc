@@ -24,47 +24,150 @@
  *
  */
 
-#include <QDir>
-#include <QFileInfo>
-#include <QUrl>
-#include <QFileDialog>
+#include "gui/UIUtils.h"
+
+#include <QColor>
 #include <QDesktopServices>
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QFileInfoList>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QList>
+#include <QRegularExpression>
+#include <QString>
+#include <QStringList>
+#include <QUrl>
+#include <QWidget>
+#include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <string>
+#include "utils/printutils.h"
+#include <utility>
 
+#include "gui/QSettingsCached.h"
+#include "platform/PlatformUtils.h"
 #include "version.h"
-#include "UIUtils.h"
-#include "PlatformUtils.h"
-#include "QSettingsCached.h"
 
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/json_parser.hpp>
+namespace {
 
-QFileInfo UIUtils::openFile(QWidget *parent)
+QString fileOpenFilter(const QString& pattern, QStringList extensions)
+{
+  if (extensions.isEmpty()) {
+    extensions << "scad" << "csg";
+#ifdef ENABLE_PYTHON
+    extensions << "py";
+#endif
+  }
+  extensions.replaceInStrings(QRegularExpression("^"), "*.");
+  return pattern.arg(extensions.join(" "));
+}
+
+QList<UIUtils::ExampleCategory> _exampleCategories;
+QMap<QString, QList<UIUtils::ExampleEntry>> _examples;
+
+bool hasCategory(const QString& name)
+{
+  for (const auto& category : _exampleCategories) {
+    if (category.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void readExamplesDir(const QJsonObject& obj, const fs::path& dir)
+{
+  QString name = obj["name"].toString(QString::fromStdString(dir.filename().generic_string()));
+
+  if (!hasCategory(name)) {
+    _exampleCategories.append(
+      UIUtils::ExampleCategory{.sort = obj["sort"].toInt(UIUtils::ExampleCategory::DEFAULT_SORT),
+                               .name = name,
+                               .tooltip = obj["tooltip"].toString()});
+  }
+
+  auto& examples = _examples[name];
+  for (const auto& entry : fs::directory_iterator{dir}) {
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    const auto& path = entry.path();
+    if (path.extension() != ".scad") {
+      continue;
+    }
+    examples.append(
+      UIUtils::ExampleEntry{.name = QString::fromStdString(path.filename().generic_string()),
+                            .fileInfo = QFileInfo(QString::fromStdString(path.generic_string()))});
+  }
+  std::sort(examples.begin(), examples.end(),
+            [](const UIUtils::ExampleEntry& e1, const UIUtils::ExampleEntry& e2) -> bool {
+              return e1.name < e2.name;
+            });
+}
+
+void enumerateExamples(const fs::path& dir)
+{
+  if (!fs::is_directory(dir)) {
+    return;
+  }
+  for (const auto& entry : fs::directory_iterator{dir}) {
+    if (!entry.is_directory()) {
+      continue;
+    }
+    auto fileInfo =
+      QFileInfo{QDir{QString::fromStdString(entry.path().generic_string())}, "example-dir.json"};
+    QJsonObject obj;
+    QFile file(fileInfo.filePath());
+    if (file.open(QIODevice::ReadOnly)) {
+      obj = QJsonDocument::fromJson(file.readAll()).object();
+    }
+    readExamplesDir(obj, entry.path());
+  }
+  std::sort(_exampleCategories.begin(), _exampleCategories.end(),
+            [](const UIUtils::ExampleCategory& c1, const UIUtils::ExampleCategory& c2) -> bool {
+              return c2.sort > c1.sort;
+            });
+}
+
+const QList<UIUtils::ExampleCategory>& readExamples()
+{
+  if (_exampleCategories.empty()) {
+    enumerateExamples(fs::path{PlatformUtils::resourceBasePath()} / "examples");
+    enumerateExamples(PlatformUtils::userExamplesPath());
+  }
+  return _exampleCategories;
+}
+
+}  // namespace
+
+QFileInfo UIUtils::openFile(QWidget *parent, QStringList extensions)
 {
   QSettingsCached settings;
-  QString last_dirname = settings.value("lastOpenDirName").toString();
-  QString new_filename = QFileDialog::getOpenFileName(parent, "Open File",
-                                                      last_dirname, "OpenSCAD Designs (*.scad *.csg)");
+  const auto last_dirname = settings.value("lastOpenDirName").toString();
+  const auto filter = fileOpenFilter("OpenSCAD Designs (%1)", std::move(extensions));
+  const auto filename = QFileDialog::getOpenFileName(parent, "Open File", last_dirname, filter);
 
-  if (new_filename.isEmpty()) {
+  if (filename.isEmpty()) {
     return {};
   }
 
-  QFileInfo fileInfo(new_filename);
-  QDir last_dir = fileInfo.dir();
-  last_dirname = last_dir.path();
-  settings.setValue("lastOpenDirName", last_dirname);
+  QFileInfo fileInfo(filename);
+  settings.setValue("lastOpenDirName", fileInfo.dir().path());
   return fileInfo;
 }
 
-QFileInfoList UIUtils::openFiles(QWidget *parent)
+QFileInfoList UIUtils::openFiles(QWidget *parent, QStringList extensions)
 {
   QSettingsCached settings;
-  QString last_dirname = settings.value("lastOpenDirName").toString();
-  QStringList new_filenames = QFileDialog::getOpenFileNames(parent, "Open File",
-                                                            last_dirname, "OpenSCAD Designs (*.scad *.csg)");
+  const auto last_dirname = settings.value("lastOpenDirName").toString();
+  const auto filter = fileOpenFilter("OpenSCAD Designs (%1)", std::move(extensions));
+  const auto filenames = QFileDialog::getOpenFileNames(parent, "Open File", last_dirname, filter);
 
   QFileInfoList fileInfoList;
-  for (const QString& filename: new_filenames) {
+  for (const QString& filename : filenames) {
     if (filename.isEmpty()) {
       continue;
     }
@@ -72,9 +175,8 @@ QFileInfoList UIUtils::openFiles(QWidget *parent)
   }
 
   if (!fileInfoList.isEmpty()) {
-    QDir last_dir = fileInfoList[fileInfoList.size() - 1].dir(); // last_dir is set to directory of last chosen valid file
-    last_dirname = last_dir.path();
-    settings.setValue("lastOpenDirName", last_dirname);
+    // last_dir is set to directory of last chosen valid file
+    settings.setValue("lastOpenDirName", fileInfoList.back().dir().path());
   }
 
   return fileInfoList;
@@ -82,7 +184,7 @@ QFileInfoList UIUtils::openFiles(QWidget *parent)
 
 QStringList UIUtils::recentFiles()
 {
-  QSettingsCached settings; // set up project and program properly in main.cpp
+  QSettingsCached settings;  // set up project and program properly in main.cpp
   QStringList files = settings.value("recentFileList").toStringList();
 
   // Remove any duplicate or empty entries from the list
@@ -102,50 +204,19 @@ QStringList UIUtils::recentFiles()
   return files;
 }
 
-using namespace boost::property_tree;
-
-static ptree *examples_tree = nullptr;
-static ptree *examplesTree()
+const QList<UIUtils::ExampleCategory>& UIUtils::exampleCategories()
 {
-  if (!examples_tree) {
-    std::string path = (PlatformUtils::resourcePath("examples") / "examples.json").string();
-    try {
-      examples_tree = new ptree;
-      read_json(path, *examples_tree);
-    } catch (const std::exception& e) {
-      LOG("Error reading examples.json: %1$s", e.what());
-      delete examples_tree;
-      examples_tree = nullptr;
-    }
-  }
-  return examples_tree;
-}
-
-QStringList UIUtils::exampleCategories()
-{
-  // categories in File menu item - Examples
-  QStringList categories;
-  ptree *pt = examplesTree();
-  if (pt) {
-    for (const auto& v : *pt) {
-      // v.first is the name of the child.
-      // v.second is the child tree.
-      categories << QString::fromStdString(v.first);
-    }
-  }
-
-  return categories;
+  return readExamples();
 }
 
 QFileInfoList UIUtils::exampleFiles(const QString& category)
 {
   QFileInfoList examples;
-  ptree *pt = examplesTree();
-  if (pt) {
-    fs::path examplesPath = PlatformUtils::resourcePath("examples") / category.toStdString();
-    for (const auto& v : pt->get_child(category.toStdString())) {
-      examples << QFileInfo(QString::fromStdString((examplesPath / v.second.data()).string()));
-    }
+  if (!_examples.contains(category)) {
+    return examples;
+  }
+  for (const auto& e : _examples[category]) {
+    examples << e.fileInfo;
   }
   return examples;
 }
@@ -162,7 +233,7 @@ void UIUtils::openHomepageURL()
 
 static void openVersionedURL(const QString& url)
 {
-  QDesktopServices::openUrl(QUrl(url.arg(openscad_shortversionnumber.c_str())));
+  QDesktopServices::openUrl(QUrl(url.arg(openscad_shortversionnumber.data())));
 }
 
 void UIUtils::openUserManualURL()
@@ -173,7 +244,8 @@ void UIUtils::openUserManualURL()
 fs::path UIUtils::returnOfflineUserManualPath()
 {
   fs::path resPath = PlatformUtils::resourcePath("resources");
-  fs::path fullPath = resPath / "docs" / "OpenSCADUserDocs" / "openscad_docs" / "OpenSCAD_User_Manual.html";
+  fs::path fullPath =
+    resPath / "docs" / "OpenSCADUserDocs" / "openscad_docs" / "OpenSCAD_User_Manual.html";
   return fullPath;
 }
 
@@ -228,3 +300,193 @@ void UIUtils::openOfflineCheatSheet()
     QDesktopServices::openUrl(QUrl(docPath));
   }
 }
+
+QString UIUtils::getBackgroundColorStyleSheet(const QColor& color)
+{
+  return QString("background-color:%1;").arg(color.toRgb().name());
+}
+
+QString UIUtils::blendForBackgroundColorStyleSheet(const QColor& input, const QColor& blend,
+                                                   float transparency)
+{
+  const auto result =
+    QColor(255.0 * (transparency * blend.redF() + (1 - transparency) * input.redF()),
+           255.0 * (transparency * blend.greenF() + (1 - transparency) * input.greenF()),
+           255.0 * (transparency * blend.blueF() + (1 - transparency) * input.blueF()));
+  return getBackgroundColorStyleSheet(result);
+}
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+static bool dumpDockAreaLayoutInfo(QDataStream& stream)
+{
+  uint8_t marker;
+  stream >> marker;
+  if (marker != /*TabMarker*/ 0xfa && marker != /*SequenceMarker*/ 0xfc) return false;
+
+  bool tabbed = marker == /*TabMarker*/ 0xfa;
+  int index = -1;
+  if (tabbed) stream >> index;
+
+  uint8_t orientation;
+  stream >> orientation;
+  auto o = static_cast<Qt::Orientation>(orientation);
+
+  int count;
+  stream >> count;
+  PRINTDB("Dock: (orientation=%1$d, count=%2$d): %3$s",
+          static_cast<int>(o) % count % (tabbed ? "Tabbed" : ""));
+
+  for (int i = 0; i < count; ++i) {
+    uint8_t nextMarker;
+    stream >> nextMarker;
+    switch (nextMarker) {
+    case /*WidgetMarker*/ 0xfb: {
+      QString name;
+      uint8_t flags;
+      stream >> name >> flags;
+      int dummy;
+      stream >> dummy >> dummy >> dummy >> dummy;
+      PRINTDB("  %1$d (Widget): %2$s, (visible=%3$d, floating=%4$d)",
+              i % name.toStdString().c_str() % static_cast<int>(bool(flags & 1)) %
+                static_cast<int>(bool(flags & 2)));
+      break;
+    }
+    case /*SequenceMarker*/ 0xfc: {
+      int dummy;
+      stream >> dummy >> dummy >> dummy >> dummy;
+      PRINTDB("  %1$d (Sequence): ", i);
+      if (!dumpDockAreaLayoutInfo(stream)) return false;
+      break;
+    }
+    default: {
+      PRINTDB("  %1$d (Unknown)", i);
+      return false;
+    }
+    }
+  }
+  return true;
+}
+
+static void dumpDockAreaLayout(QDataStream& stream)
+{
+  int count;
+  stream >> count;
+  for (int i = 0; i < count; ++i) {
+    int pos;
+    stream >> pos;
+    QSize size;
+    stream >> size;
+    PRINTDB("Dock area %1$d: pos=%2$d, size=(%3$d, %4$d)", i % pos % size.width() % size.height());
+
+    if (!dumpDockAreaLayoutInfo(stream)) return;
+  }
+
+  QSize size;
+  stream >> size;
+  PRINTDB("Central widget size: (%1$d, %2$d)", size.width() % size.height());
+  int cornerData[4];
+  for (int i = 0; i < 4; ++i) {
+    stream >> cornerData[i];
+    PRINTDB("Corner %1$d: %2$d", i % static_cast<int>(cornerData[i]));
+  }
+}
+
+static void dumpToolBarAreaLayout(QDataStream& stream, uint8_t marker)
+{
+  int lines;
+  stream >> lines;
+  for (int j = 0; j < lines; ++j) {
+    int pos;
+    stream >> pos;
+    if (pos < 0 || pos >= QInternal::DockCount) return;
+    int count;
+    stream >> count;
+
+    for (int k = 0; k < count; ++k) {
+      QString objectName;
+      stream >> objectName;
+      uint8_t shown;
+      stream >> shown;
+      int opos, osize;
+      stream >> opos;
+      stream >> osize;
+
+      // Qt somehow messed up around Qt 4.3 (and never fixed it) by failing to store the floating flag,
+      // and uses a bit from the geometry instead.
+      auto unpackRect = [](uint geom0, uint geom1, bool& floating) -> QRect {
+        floating = geom0 & 1;
+        if (!floating) return QRect();
+
+        geom0 >>= 1;
+        int x = (int)(geom0 & 0x0000ffff) - 0x7FFF;
+        int y = (int)(geom1 & 0x0000ffff) - 0x7FFF;
+        geom0 >>= 16;
+        geom1 >>= 16;
+        int w = geom0 & 0x0000ffff;
+        int h = geom1 & 0x0000ffff;
+
+        return QRect(x, y, w, h);
+      };
+
+      QRect rect;
+      bool floating = false;
+      uint geom0, geom1;
+      stream >> geom0;
+
+      if (marker == 0xfc /*ToolBarStateMarkerEx*/) {
+        stream >> geom1;
+        rect = unpackRect(geom0, geom1, floating);
+      }
+
+      PRINTDB("Toolbar: %1$s %2$s %3$s Geom: (%4$d, %5$d, %6$d, %7$d)",
+              objectName.toStdString().c_str() % (shown ? "[Shown]" : "[Hidden]") %
+                (floating ? "[Floating]" : "") % rect.x() % rect.y() % rect.width() % rect.height());
+    }
+  }
+}
+
+// Dump QMainWindow::saveState() data for debugging purposes.
+void UIUtils::dumpSaveState(const QByteArray& data)
+{
+  QDataStream stream(data);
+  stream.setByteOrder(QDataStream::BigEndian);
+  stream.setVersion(QDataStream::Qt_6_0);
+
+  // Header
+  quint32 magic, padding;
+  stream >> magic >> padding;
+  if (magic != 0x000000ff) {
+    PRINTD("Header mismatch");
+    return;
+  }
+
+  while (!stream.atEnd()) {
+    uint8_t marker;
+    stream >> marker;
+    switch (marker) {
+    case 0xfd:  // DockWidgetStateMarker
+      dumpDockAreaLayout(stream);
+      break;
+    case 0xf9:  // FloatingDockWidgetTabMarker
+      dumpDockAreaLayoutInfo(stream);
+      break;
+    case 0xfe:  // ToolBarStateMarker
+    case 0xfc:  // ToolBarStateMarkerEx
+    {
+      QRect geometry;
+      stream >> geometry;
+      dumpToolBarAreaLayout(stream, marker);
+    } break;
+    default: {
+      PRINTDB("Unknown marker: %1$d", static_cast<int>(marker));
+      return;
+    }
+    }
+  }
+}
+#else
+// Dummy implementation for Qt5
+void UIUtils::dumpSaveState(const QByteArray&)
+{
+}
+#endif  // QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)

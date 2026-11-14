@@ -23,13 +23,23 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
-#include "InputDriverEvent.h"
-#include "InputDriverManager.h"
-#include "MainWindow.h"
+#include "gui/input/InputDriverManager.h"
+
 #include <QAction>
-#include <QMenu>
 #include <QApplication>
 #include <QCoreApplication>
+#include <QList>
+#include <QMenu>
+#include <QString>
+#include <QTimer>
+#include <algorithm>
+#include <cstddef>
+#include <list>
+#include <sstream>
+#include <string>
+
+#include "gui/MainWindow.h"
+#include "gui/input/InputDriverEvent.h"
 
 InputDriverManager *InputDriverManager::self = nullptr;
 
@@ -55,11 +65,14 @@ void InputDriverManager::unregisterDriver(InputDriver *driver)
   this->drivers.remove(driver);
 }
 
-void InputDriverManager::registerActions(const QList<QAction *>& actions, const QString& parent, const QString& target)
+void InputDriverManager::registerActions(const QList<QAction *>& actions, const QString& parent,
+                                         const QString& target)
 {
   const QString emptyQString("");
   for (const auto action : actions) {
-    const auto description = ((parent == emptyQString) ? emptyQString : (parent + QString::fromUtf8(u8" \u2192 "))) + action->text();
+    const auto description =
+      ((parent == emptyQString) ? emptyQString : (parent + QString::fromUtf8(u8" \u2192 "))) +
+      action->text();
     if (!action->objectName().isEmpty()) {
       QString actionName = action->objectName();
       if ("" != target) {
@@ -76,11 +89,13 @@ void InputDriverManager::registerActions(const QList<QAction *>& actions, const 
 void InputDriverManager::init()
 {
   timer = new QTimer(this);
-  connect(QApplication::instance(), SIGNAL(focusChanged(QWidget*,QWidget*)), this, SLOT(onFocusChanged(QWidget*,QWidget*)));
+  connect(qApp, &QApplication::focusChanged, this, &InputDriverManager::onFocusChanged);
 
   doOpen(true);
-  connect(timer, SIGNAL(timeout()), this, SLOT(onTimeout()));
+  connect(timer, &QTimer::timeout, this, &InputDriverManager::onTimeout);
   timer->start(10 * 1000);
+
+  mapper.start();
 }
 
 void InputDriverManager::onTimeout()
@@ -211,7 +226,8 @@ void InputDriverManager::onInputGainUpdated()
   mapper.onInputGainUpdated();
 }
 
-size_t InputDriverManager::getButtonCount() const {
+size_t InputDriverManager::getButtonCount() const
+{
   size_t max = 0;
   for (auto driver : drivers) {
     if (driver->isOpen()) {
@@ -221,7 +237,8 @@ size_t InputDriverManager::getButtonCount() const {
   return max;
 }
 
-size_t InputDriverManager::getAxisCount() const {
+size_t InputDriverManager::getAxisCount() const
+{
   size_t max = 0;
   for (auto driver : drivers) {
     if (driver->isOpen()) {

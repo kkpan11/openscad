@@ -1,10 +1,13 @@
-#include "Tree.h"
-#include "NodeDumper.h"
+#include "core/Tree.h"
 
 #include <cassert>
-#include <algorithm>
-#include <sstream>
+#include <memory>
+#include <string>
 #include <tuple>
+
+#include "core/NodeCache.h"
+#include "core/NodeDumper.h"
+#include "core/node.h"
 
 Tree::~Tree()
 {
@@ -26,8 +29,7 @@ const std::string Tree::getString(const AbstractNode& node, const std::string& i
   if (!nodecache.contains(node)) {
     NodeDumper dumper(nodecache, this->root_node, indent, idString);
     dumper.traverse(*this->root_node);
-    assert(nodecache.contains(*this->root_node) &&
-           "NodeDumper failed to create a cache");
+    assert(nodecache.contains(*this->root_node) && "NodeDumper failed to create a cache");
   }
   return nodecache[node];
 }
@@ -53,8 +55,7 @@ const std::string Tree::getIdString(const AbstractNode& node) const
     nodecache.clear();
     NodeDumper dumper(nodecache, this->root_node, indent, idString);
     dumper.traverse(*this->root_node);
-    assert(nodecache.contains(*this->root_node) &&
-           "NodeDumper failed to create id cache");
+    assert(nodecache.contains(*this->root_node) && "NodeDumper failed to create id cache");
   }
   return nodecache[node];
 }
@@ -62,13 +63,14 @@ const std::string Tree::getIdString(const AbstractNode& node) const
 /*!
    Sets a new root. Will clear the existing cache.
  */
-void Tree::setRoot(const std::shared_ptr<const AbstractNode> &root)
+void Tree::setRoot(const std::shared_ptr<const AbstractNode>& root)
 {
   this->root_node = root;
   this->nodecachemap.clear();
 }
 
-void Tree::setDocumentPath(const std::string& path){
+void Tree::setDocumentPath(const std::string& path)
+{
   this->document_path = path;
 }
 

@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
 # test_pretty_print by don bright 2012. Copyright assigned to Marius Kintel and
 # Clifford Wolf 2012. Released under the GPL 2, or later, as described in
@@ -10,8 +10,7 @@
 # - .png and .txt files from testname-output/*
 #
 # The result is a single html report file with images data-uri encoded
-# into the file. It can be uploaded as a single static file to a web server
-# or the 'test_upload.py' script can be used.
+# into the file.
 
 
 # Design philosophy
@@ -21,14 +20,13 @@
 # 3. save the wikified data to disk
 # 4. generate html, including base64 encoding of images
 # 5. save html file
-# 6. upload html to public site and share with others
 
 # todo
 #
 # 1. why is hash differing
 
 
-import string, sys, re, os, hashlib, subprocess, time, platform, html, base64
+import pathlib, string, sys, re, os, hashlib, subprocess, time, platform, html, base64
 
 from urllib.error import URLError
 from urllib.request import urlopen
@@ -205,15 +203,46 @@ def png_encode64(fname, width=512, data=None, alt=''):
     return tag
 
 
+RUN_MARKER_NAME = '.pretty_print_run_marker'
+
+
+def mark_run(builddir):
+    # Touched by CTestCustom.template's CTEST_CUSTOM_PRE_TEST, right before ctest starts running
+    # tests, so findlogfile() can tell "the log this run wrote" from "whichever log is newest".
+    logpath = os.path.join(builddir, 'Testing', 'Temporary')
+    os.makedirs(logpath, exist_ok=True)
+    pathlib.Path(os.path.join(logpath, RUN_MARKER_NAME)).touch()
+
+
 def findlogfile(builddir):
     logpath = os.path.join(builddir, 'Testing', 'Temporary')
-    logfilename = os.path.join(logpath, 'LastTest.log.tmp')
-    if not os.path.isfile(logfilename):
-        logfilename = os.path.join(logpath, 'LastTest.log')
-    if not os.path.isfile(logfilename):
-        print('can\'t find and/or open logfile', logfilename)
+    # ctest may not have flushed LastTest.log by the time this post-test hook runs, in which case
+    # the current run is in LastTest.log.tmp<random> instead, and an interrupted run leaves its
+    # temp file behind forever. Newest-by-mtime picks the right one of those -- but two concurrent
+    # ctest invocations against the same builddir can each leave a fresh-looking file, and mtime
+    # alone can't tell which belongs to *this* invocation. So only consider candidates written at
+    # or after this run's marker; a run with nothing fresher than its own marker fails loudly
+    # instead of silently reporting a stale run's results.
+    candidates = [path for path in pathlib.Path(logpath).glob('LastTest.log*') if path.is_file()]
+    if not candidates:
+        print('can\'t find and/or open logfile in', logpath)
         sys.exit()
-    return logfilename
+
+    marker = pathlib.Path(logpath, RUN_MARKER_NAME)
+    if marker.exists():
+        marker_mtime = marker.stat().st_mtime
+        fresh = [path for path in candidates if path.stat().st_mtime >= marker_mtime]
+        if not fresh:
+            sys.exit(f'no logfile in {logpath} is newer than this run\'s marker -- ctest may '
+                      'have been interrupted before writing one')
+        candidates = fresh
+    else:
+        # Marker missing: the script was run outside the wired-up ctest hook (e.g. by hand during
+        # development), or the build tree predates the marker. Newest-by-mtime is still correct as
+        # long as this is the only invocation touching the builddir.
+        print('warning: no run marker found in', logpath, '-- falling back to newest logfile')
+
+    return str(max(candidates, key=lambda path: path.stat().st_mtime))
 
 # --- Templating ---
 
@@ -338,7 +367,8 @@ def to_html(project_name, startdate, tests, enddate, sysinfo, sysid, imgcomparer
 
     templates = Templates()
     for test in report_tests:
-        if test.type in ('txt', 'ast', 'csg', 'term', 'echo', 'stl', '3mf', 'off', 'obj'):
+        if test.type in ('txt', 'ast', 'csg', 'term', 'echo', 'stl', '3mf', 'off', 'obj', 'pov',
+                          'dxf', 'svg', 'json', ''):
             text_test_count += 1
             templates.add('text_template', 'text_tests',
                           test_name=test.fullname,
@@ -372,7 +402,7 @@ def to_html(project_name, startdate, tests, enddate, sysinfo, sysid, imgcomparer
                           expected=expected_img,
                           mask=mask_img)
         else:
-            raise TypeError('Unknown test type %r' % test.type)
+            raise TypeError(f"Unknown test type '{test.type}' in test {test.fullname}")
 
     for mf in sorted(makefiles.keys()):
         mfname = mf.strip().lstrip(os.path.sep)
@@ -400,38 +430,6 @@ def to_html(project_name, startdate, tests, enddate, sysinfo, sysid, imgcomparer
                           imgcomparer=imgcomparer)
 
 # --- End Templating ---
-
-# --- Web Upload ---
-
-def postify(data):
-    return urlencode(data).encode()
-
-def create_page():
-    data = {
-        'action': 'create',
-        'type': 'html'
-    }
-    try:
-        response = urlopen('http://www.dinkypage.com', data=postify(data))
-    except:
-        return None
-    return response.geturl()
-
-def upload_html(page_url, title, html):
-    data = {
-        'mode': 'editor',
-        'title': title,
-        'html': html,
-        'ajax': '1'
-    }
-    try:
-        response = urlopen(page_url, data=postify(data))
-    except (URLError) as e:
-        print('Upload error: ' + str(e))
-        return False
-    return 'success' in response.read().decode()
-
-# --- End Web Upload ---
 
 debug_test_pp = False
 #debug_test_pp = True
@@ -474,17 +472,11 @@ def main():
         print('warning: could not find --builddir, trying to use current dir:', builddir)
     debug('build dir set to ' +  builddir)
 
-    upload = False
-    if '--upload' in sys.argv:
-        upload = True
-        debug('will upload test report')
-
-    # Workaround for old cmake's not being able to pass parameters
-    # to CTEST_CUSTOM_POST_TEST
-    if bool(os.getenv("OPENSCAD_UPLOAD_TESTS")):
-        upload = True
-
     # --- End Command Line Parsing ---
+
+    if '--mark-run' in sys.argv:
+        mark_run(builddir)
+        return
 
     sysinfo, sysid = read_sysinfo(os.path.join(builddir, 'sysinfo.txt'))
     makefiles = load_makefiles(builddir)
@@ -502,25 +494,15 @@ def main():
     html_filename = os.path.join(builddir, 'Testing', 'Temporary', html_basename)
     debug('saving ' + html_filename + ' ' + str(len(html)) + ' bytes')
     trysave(html_filename, html)
-    print("report saved:\n", html_filename.replace(os.getcwd()+os.path.sep,''))
-
-    failed_tests = [test for test in tests if not test.passed]
-    if upload and failed_tests:
-        build = os.getenv("TRAVIS_BUILD_NUMBER")
-        if build: filename = 'travis-' + build + '_report.html'
-        else: filename = html_basename
-        os.system('scp "%s" "%s:%s"' %
-                  (html_filename, 'openscad@files.openscad.org', 'www/tests/' + filename) )
-        share_url = 'http://files.openscad.org/tests/' + filename;
-        print('html report uploaded:')
-        print(share_url)
-
-#        page_url = create_page()
-#        if upload_html(page_url, title='OpenSCAD test results', html=html):
-#            share_url = page_url.partition('?')[0]
-#            print('html report uploaded at', share_url)
-#        else:
-#            print('could not upload html report')
+    if os.environ.get("CI"):
+        # relative path because this ultimately this file will end up inside a zip archive
+        report_path = html_filename.replace(os.getcwd() + os.path.sep, "")
+        print("report saved:\n", report_path)
+    else:
+        report_path = os.path.abspath(html_filename)
+        report_uri = pathlib.Path(report_path).as_uri()
+        report_link = f"\033]8;;{report_uri}\033\\{report_path}\033]8;;\033\\"
+        print("report saved:\n", report_link)
 
     debug('test_pretty_print complete')
 

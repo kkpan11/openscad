@@ -1,10 +1,13 @@
 #pragma once
 
+#include <cassert>
+#include <cstddef>
 #include <string>
 #include <unordered_map>
-#include <cassert>
-#include "node.h"
-#include "printutils.h"
+#include <utility>
+
+#include "core/node.h"
+#include "utils/printutils.h"
 
 /*!
    Caches string values per node based on the node.index().
@@ -17,25 +20,28 @@ class NodeCache
 public:
   NodeCache() = default;
 
-  bool contains(const AbstractNode& node) const {
+  bool contains(const AbstractNode& node) const
+  {
     auto result = this->cache.find(node.index());
-    return result != this->cache.end() &&
-           result->second.second >= 0L &&
+    return result != this->cache.end() && result->second.second >= 0L &&
            (long)this->rootString.size() >= result->second.second;
   }
 
-  std::string operator[](const AbstractNode& node) const {
+  std::string operator[](const AbstractNode& node) const
+  {
     // throws std::out_of_range on miss
     auto indexpair = this->cache.at(node.index());
     return rootString.substr(indexpair.first, indexpair.second - indexpair.first);
   }
 
-  void insertStart(const size_t nodeidx, const long startindex) {
+  void insertStart(const size_t nodeidx, const long startindex)
+  {
     assert(this->cache.count(nodeidx) == 0 && "start index inserted twice");
     this->cache.emplace(nodeidx, std::make_pair(startindex, -1L));
   }
 
-  void insertEnd(const size_t nodeidx, const long endindex) {
+  void insertEnd(const size_t nodeidx, const long endindex)
+  {
     // throws std::out_of_range on miss
     auto indexpair = this->cache.at(nodeidx);
     assert(indexpair.second == -1L && "end index inserted twice");
@@ -45,11 +51,10 @@ public:
 #endif
   }
 
-  void setRootString(const std::string& rootString) {
-    this->rootString = rootString;
-  }
+  void setRootString(const std::string& rootString) { this->rootString = rootString; }
 
-  void clear() {
+  void clear()
+  {
     this->cache.clear();
     this->rootString = "";
   }

@@ -1,8 +1,13 @@
 #pragma once
 
-#include "NodeCache.h"
 #include <map>
+#include <memory>
+#include <string>
+#include <tuple>
 #include <utility>
+
+#include "core/NodeCache.h"
+#include "core/node.h"
 
 /*!
    For now, just an abstraction of the node tree which keeps a dump
@@ -13,7 +18,10 @@
 class Tree
 {
 public:
-  Tree(std::shared_ptr<const AbstractNode> root = nullptr, std::string path = {}) : root_node(std::move(root)), document_path(std::move(path)) {}
+  Tree(std::shared_ptr<const AbstractNode> root = nullptr, std::string path = {})
+    : root_node(std::move(root)), document_path(std::move(path))
+  {
+  }
   ~Tree();
 
   void setRoot(const std::shared_ptr<const AbstractNode>& root);

@@ -23,15 +23,20 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
-#include "DBusInputDriver.h"
-#include "InputDriverManager.h"
-#include "printutils.h"
+#include "gui/input/DBusInputDriver.h"
+
+#include <QDBusConnection>
+#include <QList>
+#include <QStringList>
+
+#include "gui/input/InputDriverEvent.h"
+#include "gui/input/InputDriverManager.h"
 #include "openscad_adaptor.h"
 #include "openscad_interface.h"
+#include "utils/printutils.h"
 
 void DBusInputDriver::run()
 {
-
 }
 
 DBusInputDriver::DBusInputDriver()
@@ -73,7 +78,6 @@ bool DBusInputDriver::open()
 
 void DBusInputDriver::close()
 {
-
 }
 
 void DBusInputDriver::zoom(double zoom) const

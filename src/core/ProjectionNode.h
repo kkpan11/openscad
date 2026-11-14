@@ -1,13 +1,15 @@
 #pragma once
 
-#include "node.h"
 #include <string>
+
+#include "core/ModuleInstantiation.h"
+#include "core/node.h"
 
 class ProjectionNode : public AbstractPolyNode
 {
 public:
   VISITABLE();
-  ProjectionNode(const ModuleInstantiation *mi) : AbstractPolyNode(mi) { }
+  ProjectionNode(const ModuleInstantiation *mi) : AbstractPolyNode(mi) {}
   std::string toString() const override;
   std::string name() const override { return "projection"; }
 

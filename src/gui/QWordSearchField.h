@@ -1,8 +1,10 @@
 #ifndef QWORDSEARCHFIELD_H
 #define QWORDSEARCHFIELD_H
 
-#include <QLineEdit>
+#include <QFrame>
 #include <QLabel>
+#include <QLineEdit>
+#include <QResizeEvent>
 
 class QWordSearchField : public QLineEdit
 {
@@ -31,4 +33,3 @@ private:
 };
 
 #endif /* QWORDSEARCHFIELD_H */
-

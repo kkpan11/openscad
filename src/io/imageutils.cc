@@ -1,9 +1,12 @@
-#include "imageutils.h"
+#include "io/imageutils.h"
+
 #include <cassert>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 
-void flip_image(const unsigned char *src, unsigned char *dst, size_t pixelsize, size_t width, size_t height)
+void flip_image(const unsigned char *src, unsigned char *dst, size_t pixelsize, size_t width,
+                size_t height)
 {
   assert(src && dst);
   auto rowBytes = pixelsize * width;

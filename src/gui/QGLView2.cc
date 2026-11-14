@@ -34,14 +34,12 @@
  */
 #include <QOpenGLContext>
 
-QOpenGLContext *
-getGLContext()
+QOpenGLContext *getGLContext()
 {
   return (QOpenGLContext::currentContext());
 }
 
-void
-setGLContext(QOpenGLContext *ctx)
+void setGLContext(QOpenGLContext *ctx)
 {
   /*
    * This seems like the simplest way to select QOpenGLContext.
@@ -49,5 +47,7 @@ setGLContext(QOpenGLContext *ctx)
    * Why isn't there a QOpenGLContext::makeCurrent() that uses the context's assigned
    * surface?
    */
-  ctx->makeCurrent(ctx->surface());
+  if (ctx) {
+    ctx->makeCurrent(ctx->surface());
+  }
 }

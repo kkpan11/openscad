@@ -29,21 +29,25 @@
  *  Public Domain.
  */
 
-#include <chrono>
-#include <iomanip>
-#include <bitset>
-#include <fstream>
-#include <ostream>
-#include <codecvt>
-#include <cmath>
-#include <boost/format.hpp>
+#include "gui/input/HidApiInputDriver.h"
 
-#include "Settings.h"
-#include "PlatformUtils.h"
-#include "HidApiInputDriver.h"
-#include "InputDriverEvent.h"
-#include "InputDriverManager.h"
-#include "printutils.h"
+#include <bitset>
+#include <boost/format.hpp>
+#include <boost/nowide/convert.hpp>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <fstream>
+#include <iomanip>
+#include <ios>
+#include <sstream>
+#include <string>
+
+#include "core/Settings.h"
+#include "gui/input/InputDriverEvent.h"
+#include "gui/input/InputDriverManager.h"
+#include "platform/PlatformUtils.h"
+#include "utils/printutils.h"
 
 static constexpr int BUFLEN = 64;
 static constexpr int MAX_LOG_SIZE = 20 * 1024;
@@ -56,31 +60,51 @@ static ch::system_clock::time_point logtime;
 // http://www.linux-usb.org/usb.ids
 // http://www.3dconnexion.eu/nc/service/faq/show_faq/7ece50ed-0b39-b57e-d3b2-4afd9420604e.html
 static const struct device_id device_ids[] = {
-  { 0x046d, 0xc603, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Spacemouse Plus XT"},
-  { 0x046d, 0xc605, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion CADman"},
-  { 0x046d, 0xc606, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Spacemouse Classic"},
-  { 0x046d, 0xc621, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Spaceball 5000"},
-  { 0x046d, 0xc623, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Space Traveller 3D Mouse"},
-  { 0x046d, 0xc625, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Space Pilot 3D Mouse"},
-  { 0x046d, 0xc626, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Space Navigator 3D Mouse"},
-  { 0x046d, 0xc627, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Space Explorer 3D Mouse"},
-  { 0x046d, 0xc628, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Space Navigator for Notebooks"},
-  { 0x046d, 0xc629, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion SpacePilot Pro 3D Mouse"},
-  { 0x046d, 0xc62b, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Space Mouse Pro"},
-  { 0x256f, 0xc62e, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Space Mouse Wireless (cabled)"},
-  { 0x256f, 0xc62f, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Space Mouse Wireless"},
-  { 0x256f, 0xc631, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Space Mouse Pro Wireless (cabled)"},
-  { 0x256f, 0xc632, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Space Mouse Pro Wireless"},
-  { 0x256f, 0xc635, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Space Mouse Compact"},
+  {0x046d, 0xc603, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Spacemouse Plus XT"},
+  {0x046d, 0xc605, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion CADman"},
+  {0x046d, 0xc606, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Spacemouse Classic"},
+  {0x046d, 0xc621, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Spaceball 5000"},
+  {0x046d, 0xc623, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Traveller 3D Mouse"},
+  {0x046d, 0xc625, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Pilot 3D Mouse"},
+  {0x046d, 0xc626, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Navigator 3D Mouse"},
+  {0x046d, 0xc627, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Explorer 3D Mouse"},
+  {0x046d, 0xc628, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Navigator for Notebooks"},
+  {0x046d, 0xc629, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion SpacePilot Pro 3D Mouse"},
+  {0x046d, 0xc62b, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Mouse Pro"},
+  {0x256f, 0xc62e, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Mouse Wireless (cabled)"},
+  {0x256f, 0xc62f, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Mouse Wireless"},
+  {0x256f, 0xc631, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Mouse Pro Wireless (cabled)"},
+  {0x256f, 0xc632, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Mouse Pro Wireless"},
+  {0x256f, 0xc635, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Mouse Compact"},
+  {0x256f, 0xc63a, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Space Mouse Wireless BT"},
   // This is reported to be used with a 3Dconnexion Space Mouse Wireless 256f:c62e
-  { 0x256f, 0xc652, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button, "3Dconnexion Universal Receiver"},
-  { -1, -1, nullptr, nullptr, nullptr},
+  {0x256f, 0xc652, &HidApiInputDriver::hidapi_decode_axis, &HidApiInputDriver::hidapi_decode_button,
+   "3Dconnexion Universal Receiver"},
+  {-1, -1, nullptr, nullptr, nullptr},
 };
 
 #define HIDAPI_LOG(f) hidapi_log(boost::format(f))
 // NOLINTNEXTLINE(*macro-parentheses)
 #define HIDAPI_LOGP(f, a) hidapi_log(boost::format(f) % a)
-static void hidapi_log(const boost::format& format) {
+static void hidapi_log(const boost::format& format)
+{
   if (logstream) {
     const ch::system_clock::duration time = ch::system_clock::now() - logtime;
 
@@ -106,17 +130,14 @@ static void hidapi_log_input(unsigned char *buf, int len)
 
 static std::string to_string(const wchar_t *wstr)
 {
-  if (wstr) {
-    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
-    return conv.to_bytes(wstr);
-  }
-  return "<null>";
+  return wstr ? boost::nowide::narrow(wstr) : "<null>";
 }
 
 static const device_id *match_device(const struct hid_device_info *info)
 {
   for (int idx = 0; device_ids[idx].name != nullptr; ++idx) {
-    if ((device_ids[idx].vendor_id == info->vendor_id) && (device_ids[idx].product_id == info->product_id)) {
+    if ((device_ids[idx].vendor_id == info->vendor_id) &&
+        (device_ids[idx].product_id == info->product_id)) {
       return &device_ids[idx];
     }
   }
@@ -177,7 +198,7 @@ void HidApiInputDriver::hidapi_decode_button(const unsigned char *buf, unsigned 
     const uint16_t current = buf[1] | buf[2] << 8;
 
     const std::bitset<16> bits_curr{current};
-    const std::bitset<16> bits_last{buttons};
+    const std::bitset<16> bits_last{buttons};  // NOLINT
 
     for (int i = 0; i < 16; ++i) {
       if (bits_curr.test(i) != bits_last.test(i)) {
@@ -211,10 +232,8 @@ std::pair<hid_device *, const struct device_id *> HidApiInputDriver::enumerate()
   struct hid_device_info *info = hid_enumerate(0, 0);
   for (; info != nullptr; info = info->next) {
     HIDAPI_LOGP("D: %04x:%04x | path = %s, serial = %s, manufacturer = %s, product = %s",
-                info->vendor_id % info->product_id % info->path
-                % to_string(info->serial_number)
-                % to_string(info->manufacturer_string)
-                % to_string(info->product_string));
+                info->vendor_id % info->product_id % info->path % to_string(info->serial_number) %
+                  to_string(info->manufacturer_string) % to_string(info->product_string));
     const device_id *dev = match_device(info);
     if (!dev) {
       continue;
@@ -226,14 +245,16 @@ std::pair<hid_device *, const struct device_id *> HidApiInputDriver::enumerate()
     hid_dev = hid_open_path(info->path);
 
     if (!hid_dev) {
-      HIDAPI_LOGP("O: %04x:%04x | %s", info->vendor_id % info->product_id % to_string(info->serial_number));
+      HIDAPI_LOGP("O: %04x:%04x | %s",
+                  info->vendor_id % info->product_id % to_string(info->serial_number));
       hid_dev = hid_open(info->vendor_id, info->product_id, info->serial_number);
       if (!hid_dev) {
         continue;
       }
     }
 
-    HIDAPI_LOGP("R: %04x:%04x | %s", info->vendor_id % info->product_id % to_string(info->serial_number));
+    HIDAPI_LOGP("R: %04x:%04x | %s",
+                info->vendor_id % info->product_id % to_string(info->serial_number));
     unsigned char buf[BUFLEN];
     const int len = hid_read_timeout(hid_dev, buf, BUFLEN, 100);
     HIDAPI_LOGP("?: %d", len);
@@ -269,9 +290,8 @@ bool HidApiInputDriver::open()
 
   std::tie(this->hid_dev, this->dev) = enumerate();
   if (this->dev) {
-    name = STR(std::setfill('0'), std::setw(4), std::hex,
-               "HidApiInputDriver (", dev->vendor_id, ":", dev->product_id,
-               " - ", dev->name, ")");
+    name = STR(std::setfill('0'), std::setw(4), std::hex, "HidApiInputDriver (", dev->vendor_id, ":",
+               dev->product_id, " - ", dev->name, ")");
     start();
     HIDAPI_LOGP("HidApiInputDriver::open(): %s", name);
     return true;

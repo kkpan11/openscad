@@ -16,8 +16,10 @@
 
  */
 
-#include "linalg.h"
-#include "ScopeContext.h"
+#include "geometry/linalg.h"
+#include "core/ScopeContext.h"
+#include <memory>
+#include <string>
 #include <vector>
 #include <Eigen/Geometry>
 
@@ -50,7 +52,7 @@ public:
   Eigen::Vector3d object_rot;
 
   // Perspective settings
-  double fov; // Field of view
+  double fov;  // Field of view
 
   // true if camera should try to view everything in a given
   // bounding box.
@@ -67,7 +69,6 @@ public:
   // (--camera option in commandline mode)
   bool locked;
 
-protected:
   // Perspective settings
   double viewer_distance;
 };

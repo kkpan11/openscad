@@ -34,32 +34,39 @@
  * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-#include "OffscreenContextGLX.h"
+#include "glview/offscreen-old/OffscreenContextGLX.h"
 
-
-#include "system-gl.h"
+#include "glview/OffscreenContext.h"
+#include "glview/system-gl.h"
+#include <cstdlib>
+#include <iostream>
+#include <cstdint>
+#include <memory>
 #include <GL/gl.h>
 #include <GL/glx.h>
 
 #include <cassert>
 #include <sstream>
 #include <string>
-#include <sys/utsname.h> // for uname
+#include <sys/utsname.h>  // for uname
 
-#include "printutils.h"
+#include "utils/printutils.h"
 
 namespace {
 
-class OffscreenContextGLX : public OffscreenContext {
+class OffscreenContextGLX : public OffscreenContext
+{
 public:
   OffscreenContextGLX(uint32_t width, uint32_t height) : OffscreenContext(width, height) {}
-  ~OffscreenContextGLX() {
+  ~OffscreenContextGLX()
+  {
     if (this->xwindow) XDestroyWindow(this->xdisplay, this->xwindow);
     if (this->openGLContext) glXDestroyContext(this->xdisplay, this->openGLContext);
     if (this->xdisplay) XCloseDisplay(this->xdisplay);
   }
 
-  std::string getInfo() const override {
+  std::string getInfo() const override
+  {
     if (!this->xdisplay) {
       return {"No GL Context initialized. No information to report\n"};
     }
@@ -70,13 +77,14 @@ public:
     glXQueryVersion(this->xdisplay, &major, &minor);
 
     result << "GL context creator: GLX (old)\n"
-    << "GLX version: " << major << "." << minor << "\n"
-    << "PNG generator: lodepng\n";
+           << "GLX version: " << major << "." << minor << "\n"
+           << "PNG generator: lodepng\n";
 
     return result.str();
   }
 
-  bool makeCurrent() const override {
+  bool makeCurrent() const override
+  {
     return glXMakeContextCurrent(this->xdisplay, this->xwindow, this->xwindow, this->openGLContext);
   }
 
@@ -111,18 +119,25 @@ static int XCreateWindow_error(Display *dpy, XErrorEvent *event)
  */
 bool create_glx_dummy_window(OffscreenContextGLX& ctx)
 {
-  int attributes[] = {
-    GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT | GLX_PIXMAP_BIT | GLX_PBUFFER_BIT, //support all 3, for OpenCSG
-    GLX_RENDER_TYPE,   GLX_RGBA_BIT,
-    GLX_RED_SIZE, 8,
-    GLX_GREEN_SIZE, 8,
-    GLX_BLUE_SIZE, 8,
-    GLX_ALPHA_SIZE, 8,
-    GLX_DEPTH_SIZE, 24, // depth-stencil for OpenCSG
-    GLX_STENCIL_SIZE, 8,
-    GLX_DOUBLEBUFFER, true,
-    None
-  };
+  int attributes[] = {GLX_DRAWABLE_TYPE,
+                      GLX_WINDOW_BIT | GLX_PIXMAP_BIT | GLX_PBUFFER_BIT,  // support all 3, for OpenCSG
+                      GLX_RENDER_TYPE,
+                      GLX_RGBA_BIT,
+                      GLX_RED_SIZE,
+                      8,
+                      GLX_GREEN_SIZE,
+                      8,
+                      GLX_BLUE_SIZE,
+                      8,
+                      GLX_ALPHA_SIZE,
+                      8,
+                      GLX_DEPTH_SIZE,
+                      24,  // depth-stencil for OpenCSG
+                      GLX_STENCIL_SIZE,
+                      8,
+                      GLX_DOUBLEBUFFER,
+                      true,
+                      None};
 
   auto dpy = ctx.xdisplay;
 
@@ -154,8 +169,7 @@ bool create_glx_dummy_window(OffscreenContextGLX& ctx)
   xwin_attr.event_mask = StructureNotifyMask | ExposureMask | KeyPressMask;
   unsigned long int mask = CWBackPixel | CWBorderPixel | CWColormap | CWEventMask;
 
-  auto xWin = XCreateWindow(dpy, root, 0, 0, width, height,
-                            0, visinfo->depth, InputOutput,
+  auto xWin = XCreateWindow(dpy, root, 0, 0, width, height, 0, visinfo->depth, InputOutput,
                             visinfo->visual, mask, &xwin_attr);
 
   // Window xWin = XCreateSimpleWindow( dpy, DefaultRootWindow(dpy), 0,0,42,42, 0,0,0 );
@@ -180,7 +194,7 @@ bool create_glx_dummy_window(OffscreenContextGLX& ctx)
     return false;
   }
 
-  //GLXWindow glxWin = glXCreateWindow( dpy, fbconfigs[0], xWin, nullptr );
+  // GLXWindow glxWin = glXCreateWindow( dpy, fbconfigs[0], xWin, nullptr );
 
   ctx.openGLContext = context;
   ctx.xwindow = xWin;
@@ -190,7 +204,6 @@ bool create_glx_dummy_window(OffscreenContextGLX& ctx)
 
   return true;
 }
-
 
 #pragma GCC diagnostic ignored "-Waddress"
 bool create_glx_dummy_context(OffscreenContextGLX& ctx)
@@ -204,7 +217,7 @@ bool create_glx_dummy_context(OffscreenContextGLX& ctx)
   if (ctx.xdisplay == nullptr) {
     std::cerr << "Unable to open a connection to the X server.\n";
     auto dpyenv = getenv("DISPLAY");
-    std::cerr << "DISPLAY=" << (dpyenv?dpyenv:"") << "\n";
+    std::cerr << "DISPLAY=" << (dpyenv ? dpyenv : "") << "\n";
     return false;
   }
 
@@ -213,8 +226,8 @@ bool create_glx_dummy_context(OffscreenContextGLX& ctx)
 
   glXQueryVersion(ctx.xdisplay, &major, &minor);
   if (major == 1 && minor <= 2 && glXGetVisualFromFBConfig == nullptr) {
-    std::cerr << "Error: GLX version 1.3 functions missing. "
-              << "Your GLX version: " << major << "." << minor << std::endl;
+    std::cerr << "Error: GLX version 1.3 functions missing. " << "Your GLX version: " << major << "."
+              << minor << std::endl;
   } else {
     result = create_glx_dummy_window(ctx);
   }
@@ -227,9 +240,10 @@ bool create_glx_dummy_context(OffscreenContextGLX& ctx)
 
 namespace offscreen_old {
 
-std::shared_ptr<OffscreenContext> CreateOffscreenContextGLX(
-  uint32_t width, uint32_t height, uint32_t majorGLVersion, 
-  uint32_t minorGLVersion, bool gles, bool compatibilityProfile)   
+std::shared_ptr<OffscreenContext> CreateOffscreenContextGLX(uint32_t width, uint32_t height,
+                                                            uint32_t majorGLVersion,
+                                                            uint32_t minorGLVersion, bool gles,
+                                                            bool compatibilityProfile)
 {
   auto ctx = std::make_shared<OffscreenContextGLX>(width, height);
 

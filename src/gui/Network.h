@@ -1,6 +1,6 @@
 /*
  *  OpenSCAD (www.openscad.org)
- *  Copyright (C) 2009-2019 Clifford Wolf <clifford@clifford.at> and
+ *  Copyright (C) 2009-2026 Clifford Wolf <clifford@clifford.at> and
  *                          Marius Kintel <marius@kintel.net>
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -26,51 +26,72 @@
 
 #pragma once
 
+#include <QEventLoop>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QObject>
+#include <QSslConfiguration>
+#include <QSslSocket>
 #include <QString>
+#include <QTimer>
 #include <QtNetwork>
+#include <algorithm>
+#include <exception>
+#include <functional>
+#include <string>
 #include <utility>
-#include <utility>
+#include <vector>
 
-#include "printutils.h"
-#include "PlatformUtils.h"
-#include "NetworkSignal.h"
+#include "core/Settings.h"
+#include "gui/CaCerts.h"
+#include "gui/NetworkSignal.h"
+#include "platform/PlatformUtils.h"
+#include "utils/printutils.h"
 
 class NetworkException : public std::exception
 {
 public:
-  NetworkException(const QNetworkReply::NetworkError& error, const QString& errorMessage) : error(error), errorMessage(errorMessage.toStdString()) { }
+  NetworkException(const QNetworkReply::NetworkError& error, const QString& errorMessage)
+    : error(error), errorMessage(errorMessage.toStdString())
+  {
+  }
 
   const QNetworkReply::NetworkError& getError() const { return error; }
   const std::string& getErrorMessage() const { return errorMessage; }
 
-  const char *what() const noexcept override
-  {
-    return errorMessage.c_str();
-  }
+  const char *what() const noexcept override { return errorMessage.c_str(); }
 
 private:
   QNetworkReply::NetworkError error;
   std::string errorMessage;
 };
 
-using network_progress_func_t = std::function<bool (double)>;
+using network_progress_func_t = std::function<bool(double)>;
 
 template <typename ResultType>
 class NetworkRequest
 {
 public:
-  using setup_func_t = std::function<void (QNetworkRequest&)>;
+  using setup_func_t = std::function<void(QNetworkRequest&)>;
   using reply_func_t = std::function<QNetworkReply *(QNetworkAccessManager&, QNetworkRequest&)>;
-  using transform_func_t = std::function<ResultType (QNetworkReply *)>;
+  using transform_func_t = std::function<ResultType(QNetworkReply *)>;
+  using error_func_t = std::function<ResultType(QNetworkReply *)>;
 
   NetworkRequest(QUrl url, std::vector<int> accepted_codes, const int timeout_seconds)
     : url(std::move(url)), accepted_codes(std::move(accepted_codes)), timeout_seconds(timeout_seconds)
-  { }
+  {
+  }
   virtual ~NetworkRequest() = default;
 
-  void set_progress_func(const network_progress_func_t& progress_func) { this->progress_func = progress_func; }
-  ResultType execute(const setup_func_t& setup_func, const reply_func_t& reply_func, transform_func_t transform_func);
+  void set_progress_func(const network_progress_func_t& progress_func)
+  {
+    this->progress_func = progress_func;
+  }
+  ResultType execute(const setup_func_t& setup_func, const reply_func_t& reply_func,
+                     const transform_func_t& transform_func);
+  ResultType execute(const setup_func_t& setup_func, const reply_func_t& reply_func,
+                     const transform_func_t& transform_func, const error_func_t& error_func);
 
 private:
   QUrl url;
@@ -81,12 +102,38 @@ private:
 
 template <typename ResultType>
 ResultType NetworkRequest<ResultType>::execute(const NetworkRequest::setup_func_t& setup_func,
-    const NetworkRequest::reply_func_t& reply_func,
-    NetworkRequest::transform_func_t transform_func)
+                                               const NetworkRequest::reply_func_t& reply_func,
+                                               const NetworkRequest::transform_func_t& transform_func)
+{
+  return execute(setup_func, reply_func, transform_func, [](QNetworkReply *reply) -> ResultType {
+    throw NetworkException{reply->error(), reply->errorString()};
+  });
+}
+
+template <typename ResultType>
+ResultType NetworkRequest<ResultType>::execute(const NetworkRequest::setup_func_t& setup_func,
+                                               const NetworkRequest::reply_func_t& reply_func,
+                                               const NetworkRequest::transform_func_t& transform_func,
+                                               const NetworkRequest::error_func_t& error_func)
 {
   QNetworkRequest request(url);
-  request.setHeader(QNetworkRequest::UserAgentHeader, QString::fromStdString(PlatformUtils::user_agent()));
+  request.setHeader(QNetworkRequest::UserAgentHeader,
+                    QString::fromStdString(PlatformUtils::user_agent()));
   setup_func(request);
+
+  const auto caCertPath = QString::fromStdString(Settings::Settings::caCertPath.value());
+  const auto tlsSkipVerify = Settings::Settings::tlsSkipVerify.value();
+  if (!caCertPath.isEmpty() || tlsSkipVerify) {
+    QSslConfiguration sslConfig = request.sslConfiguration();
+    if (tlsSkipVerify) {
+      sslConfig.setPeerVerifyMode(QSslSocket::VerifyNone);
+    } else {
+      const auto certs = loadCustomCaCerts(caCertPath);
+      // requires Qt5.15 or Qt6
+      sslConfig.addCaCertificates(certs);
+    }
+    request.setSslConfiguration(sslConfig);
+  }
 
   QNetworkAccessManager nam;
   QNetworkReply *reply = reply_func(nam, request);
@@ -100,9 +147,9 @@ ResultType NetworkRequest<ResultType>::execute(const NetworkRequest::setup_func_
                               reply->abort();
                             }
                           }};
-  QObject::connect(&timer, SIGNAL(timeout()), &loop, SLOT(quit()));
-  QObject::connect(reply, SIGNAL(finished()), &loop, SLOT(quit()));
-  QObject::connect(reply, SIGNAL(uploadProgress(qint64,qint64)), &forwarder, SLOT(network_progress(qint64,qint64)));
+  QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+  QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+  QObject::connect(reply, &QNetworkReply::uploadProgress, &forwarder, &NetworkSignal::network_progress);
   timer.setSingleShot(true);
   timer.start(timeout_seconds * 1000);
   loop.exec();
@@ -121,13 +168,13 @@ ResultType NetworkRequest<ResultType>::execute(const NetworkRequest::setup_func_
     throw NetworkException{QNetworkReply::TimeoutError, _("Timeout error")};
   }
   if (reply->error() != QNetworkReply::NoError) {
-    throw NetworkException{reply->error(), reply->errorString()};
+    return error_func(reply);
+  } else {
+    const auto statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (std::find(accepted_codes.begin(), accepted_codes.end(), statusCode) == accepted_codes.end()) {
+      QString reason = reply->attribute(QNetworkRequest::HttpReasonPhraseAttribute).toString();
+      throw NetworkException{QNetworkReply::ProtocolFailure, reason};
+    }
   }
-  const auto statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-  if (std::find(accepted_codes.begin(), accepted_codes.end(), statusCode) == accepted_codes.end()) {
-    QString reason = reply->attribute(QNetworkRequest::HttpReasonPhraseAttribute).toString();
-    throw NetworkException{QNetworkReply::ProtocolFailure, reason};
-  }
-
   return transform_func(reply);
 }

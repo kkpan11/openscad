@@ -1,6 +1,12 @@
-#include "ParameterSet.h"
-#include "printutils.h"
+#include "core/customizer/ParameterSet.h"
+
 #include <boost/property_tree/json_parser.hpp>
+#include <filesystem>
+#include <fstream>
+#include <string>
+
+#include "core/str_utf8_wrapper.h"
+#include "utils/printutils.h"
 
 static std::string parameterSetsKey("parameterSets");
 static std::string fileFormatVersionKey("fileFormatVersion");
@@ -10,8 +16,13 @@ bool ParameterSets::readFile(const std::string& filename)
 {
   boost::property_tree::ptree root;
 
+  std::ifstream f(std::filesystem::u8path(filename));
+  if (!f.good()) {
+    LOG(message_group::Error, "Cannot open Parameter Set '%1$s' for reading", filename);
+    return false;
+  }
   try {
-    boost::property_tree::read_json(filename, root);
+    boost::property_tree::read_json(f, root);
   } catch (const boost::property_tree::json_parser_error& e) {
     LOG(message_group::Error, "Cannot open Parameter Set '%1$s': %2$s", filename, e.what());
     return false;
@@ -26,7 +37,10 @@ bool ParameterSets::readFile(const std::string& filename)
     ParameterSet set;
     set.setName(entry.first);
     for (const auto& value : entry.second) {
-      set[value.first] = value.second;
+      // Parameter names are compared against identifiers from the AST, which the
+      // lexer normalises to NFC. A key written in any other normalisation would
+      // silently fail to match and leave the parameter at its design default.
+      set[normalize_utf8_nfc(value.first)] = value.second;
     }
     push_back(set);
   }
@@ -48,8 +62,13 @@ void ParameterSets::writeFile(const std::string& filename) const
   root.put<std::string>(fileFormatVersionKey, fileFormatVersionValue);
   root.push_back(boost::property_tree::ptree::value_type(parameterSetsKey, sets));
 
+  std::ofstream f(std::filesystem::u8path(filename));
+  if (!f.good()) {
+    LOG(message_group::Error, "Cannot open Parameter Set '%1$s' for writing", filename);
+    return;
+  }
   try {
-    boost::property_tree::write_json(filename, root);
+    boost::property_tree::write_json(f, root);
   } catch (const boost::property_tree::json_parser_error& e) {
     LOG(message_group::Error, "Cannot write Parameter Set '%1$s': %2$s", filename, e.what());
   }

@@ -128,14 +128,14 @@ jobs:
         for OUTPUT in "${OUTPUTS[@]}";do
           echo "${OUTPUT}"
         done
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         submodules: 'recursive'
     - name: Install dependencies
-      run: ./scripts/github-ci-linux-get-dependencies.sh kinetic
-    - name: Dependency fixup
-      run: sudo apt-get install gettext
-    - uses: actions/setup-python@v5
+      run: |
+        which sudo || apt install -y sudo
+        sudo ./scripts/uni-get-dependencies.sh qt6
+    - uses: actions/setup-python@v7
       with:
         python-version: '3.11'
     - name: Build
@@ -145,9 +145,9 @@ jobs:
         echo "Build exit code: $?"
     - name: Test
       run: ./scripts/github-ci.sh test
-      if: ${{ ! inputs.enable_wasm }} 
+      if: ${{ ! inputs.enable_wasm }}
     - name: Upload Test Result Report
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       if: ${{ always() }}
       with:
         name: Test Result Report (${{ matrix.os }})

@@ -11,12 +11,10 @@
 #endif
 
 #include <QString>
-#include "printutils.h"
+
+#include "utils/printutils.h"
 
 inline QString q_(const char *msgid, const char *msgctxt)
 {
-  return QString::fromUtf8(msgctxt ?
-                           _(msgid, msgctxt):
-                           _(msgid)
-                           );
+  return QString::fromUtf8(msgctxt ? _(msgid, msgctxt) : _(msgid));
 }

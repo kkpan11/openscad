@@ -1,13 +1,32 @@
 #pragma once
 
+#include <QAction>
+#include <QActionGroup>
+#include <QCloseEvent>
+#include <QComboBox>
+#include <QFont>
+#include <QFontComboBox>
+#include <QHash>
+#include <QKeyEvent>
 #include <QMainWindow>
 #include <QSettings>
+#include <QShowEvent>
+#include <QString>
+#include <QStringList>
+#include <QVariant>
+#include <QWidget>
+#include <string>
 
-#include "qtgettext.h" // IWYU pragma: keep
+#include "core/Settings.h"
+#include "glview/RenderSettings.h"
+#include "gui/InitConfigurator.h"
+#include "gui/qtgettext.h"  // IWYU pragma: keep
+#include "openscad_gui.h"
 #include "ui_Preferences.h"
-#include "Settings.h"
-#include "InitConfigurator.h"
+#include "json/json.hpp"
 
+class GlobalPreferences;
+class QTimer;
 class Preferences : public QMainWindow, public Ui::Preferences, public InitConfigurator
 {
   Q_OBJECT;
@@ -15,14 +34,14 @@ class Preferences : public QMainWindow, public Ui::Preferences, public InitConfi
 public:
   ~Preferences() override;
 
-  static void create(const QStringList& colorSchemes);
-  static Preferences *inst();
-
   QVariant getValue(const QString& key) const;
   void init();
+  void update();
   void apply_win() const;
   void updateGUI();
   void fireEditorConfigChanged() const;
+  void fireApplicationFontChanged() const;
+  void insertListItem(QListWidget *listBox, QListWidgetItem *listItem);
 
 public slots:
   void actionTriggered(class QAction *);
@@ -31,7 +50,7 @@ public slots:
   void on_colorSchemeChooser_itemSelectionChanged();
   void on_fontChooser_currentFontChanged(const QFont&);
   void on_fontSize_currentIndexChanged(int);
-  void on_syntaxHighlight_textActivated(const QString & s);
+  void on_syntaxHighlight_currentTextChanged(const QString&);
   void on_openCSGWarningBox_toggled(bool);
   void on_cgalCacheSizeMBEdit_textChanged(const QString&);
   void on_polysetCacheSizeMBEdit_textChanged(const QString&);
@@ -52,7 +71,7 @@ public slots:
   void on_enableTraceUsermoduleParametersCheckBox_toggled(bool);
   void on_enableParameterCheckBox_toggled(bool);
   void on_enableRangeCheckBox_toggled(bool);
-  void on_useAsciiSTLCheckBox_toggled(bool);
+  void on_comboBoxRenderBackend3D_activated(int);
   void on_comboBoxToolbarExport3D_activated(int);
   void on_comboBoxToolbarExport2D_activated(int);
   void on_checkBoxSummaryCamera_toggled(bool);
@@ -61,10 +80,11 @@ public slots:
   void on_enableHidapiTraceCheckBox_toggled(bool);
   void on_checkBoxShowWarningsIn3dView_toggled(bool);
   void on_checkBoxMouseCentricZoom_toggled(bool);
-  void on_checkBoxMouseSwapButtons_toggled(bool);
   void on_timeThresholdOnRenderCompleteSoundEdit_textChanged(const QString&);
   void on_enableClearConsoleCheckBox_toggled(bool);
   void on_consoleMaxLinesEdit_textChanged(const QString&);
+  void on_fontComboBoxApplicationFontFamily_currentFontChanged(const QFont&);
+  void on_comboBoxApplicationFontSize_currentIndexChanged(int);
   void on_consoleFontChooser_currentFontChanged(const QFont&);
   void on_consoleFontSize_currentIndexChanged(int);
   void on_customizerFontChooser_currentFontChanged(const QFont&);
@@ -93,13 +113,14 @@ public slots:
   void on_comboBoxLineWrapVisualizationEnd_activated(int);
   void on_comboBoxModifierNumberScrollWheel_activated(int);
 
-
   // Display
   void on_checkBoxHighlightCurrentLine_toggled(bool);
   void on_checkBoxEnableBraceMatching_toggled(bool);
   void on_checkBoxEnableLineNumbers_toggled(bool);
 
   // Print
+  void on_checkBoxEnableRemotePrintServices_toggled(bool);
+  void on_comboBoxDefaultPrintService_activated(int);
   void on_pushButtonOctoPrintCheckConnection_clicked();
   void on_pushButtonOctoPrintSlicingEngine_clicked();
   void on_comboBoxOctoPrintSlicingEngine_activated(int);
@@ -110,12 +131,56 @@ public slots:
   void on_lineEditOctoPrintURL_editingFinished();
   void on_lineEditOctoPrintApiKey_editingFinished();
   void on_pushButtonOctoPrintApiKey_clicked();
+  void on_pushButtonOctoPrintRequestApiKey_clicked();
+  void on_lineEditLocalAppExecutable_editingFinished();
+  void on_toolButtonLocalAppSelectExecutable_clicked();
+  void on_lineEditLocalAppTempDir_editingFinished();
+  void on_toolButtonLocalAppSelectTempDir_clicked();
+  void on_comboBoxLocalAppFileFormat_activated(int);
+  void on_toolButtonLocalAppParameterRemove_clicked();
+  void on_toolButtonLocalAppParameterAdd_clicked();
+  void on_toolButtonLocalAppParameterUp_clicked();
+  void on_toolButtonLocalAppParameterDown_clicked();
+  void on_toolButtonLocalAppParameterAddFile_clicked();
+  void on_listWidgetLocalAppParams_itemSelectionChanged();
+  void on_listWidgetLocalAppParams_itemChanged(QListWidgetItem *);
+  void on_actionLocalAppParameterFile_triggered();
+  void on_actionLocalAppParameterDir_triggered();
+  void on_actionLocalAppParameterExtension_triggered();
+  void on_actionLocalAppParameterSource_triggered();
+  void on_actionLocalAppParameterSourceDir_triggered();
+  void listWidgetLocalAppParamsModelDataChanged();
+
+  // Dialogs
+  void on_checkBoxAlwaysShowExportPdfDialog_toggled(bool);
+  void on_checkBoxAlwaysShowExport3mfDialog_toggled(bool);
+  void on_checkBoxAlwaysShowPrintServiceDialog_toggled(bool);
+
+  // Network
+  void on_lineEditCaCertPath_editingFinished();
+  void on_toolButtonCaCertBrowse_clicked();
+  void on_checkBoxTlsSkipVerify_toggled(bool);
+
+  // AI Config Slots
+  void on_comboBoxAIProfile_currentIndexChanged(int);
+  void on_pushButtonAINewProfile_clicked();
+  void on_pushButtonAIDeleteProfile_clicked();
+  void on_lineEditAIApiEndpoint_textChanged(const QString&);
+  void on_lineEditAIApiKey_textChanged(const QString&);
+  void on_pushButtonAIParamAdd_clicked();
+  void on_pushButtonAIParamRemove_clicked();
+  void on_tableWidgetAIParams_itemChanged(class QTableWidgetItem *item);
+
+private:
+  void loadAIParams(const QString& profileName);
+  void saveAIParams();
 
 signals:
   void requestRedraw() const;
   void updateUndockMode(bool undockMode) const;
   void updateReorderMode(bool undockMode) const;
   void fontChanged(const QString& family, uint size) const;
+  void applicationFontChanged(const QString& family, uint size) const;
   void consoleFontChanged(const QString& family, uint size) const;
   void customizerFontChanged(const QString& family, uint size) const;
   void colorSchemeChanged(const QString& scheme) const;
@@ -124,37 +189,58 @@ signals:
   void editorConfigChanged() const;
   void ExperimentalChanged() const;
   void updateMouseCentricZoom(bool state) const;
-  void updateMouseSwapButtons(bool state) const;
   void autocompleteChanged(bool status) const;
   void characterThresholdChanged(int val) const;
   void stepSizeChanged(int val) const;
   void toolbarExportChanged() const;
+  void renderBackend3DChanged(RenderBackend3D backend) const;
 
 private slots:
   void on_lineEditStepSize_textChanged(const QString& arg1);
 
   void on_checkBoxEnableNumberScrollWheel_toggled(bool checked);
 
+  void on_checkBoxAutocompleteIncludeVariables_toggled(bool state);
+
+  void on_checkBoxAutocompleteIncludeModules_toggled(bool state);
+
+  void on_checkBoxAutocompleteIncludeFunctions_toggled(bool state);
+
+  void on_comboBoxAutoCompletionMode_activated(int val);
+
 private:
+  friend GlobalPreferences;
   Preferences(QWidget *parent = nullptr);
   void keyPressEvent(QKeyEvent *e) override;
   void showEvent(QShowEvent *e) override;
   void closeEvent(QCloseEvent *e) override;
+  bool event(QEvent *e) override;
   void removeDefaultSettings();
   void setupFeaturesPage();
+  void setup3DPrintPage();
   void writeSettings();
   void hidePasswords();
   void addPrefPage(QActionGroup *group, QAction *action, QWidget *widget);
-  void createFontSizeMenu(QComboBox *box, const QString &setting);
-  void updateGUIFontFamily(QFontComboBox *fontSelector, const QString &setting);
-  void updateGUIFontSize(QComboBox *fsSelector, const QString &setting);
+  void createFontSizeMenu(QComboBox *box, const QString& setting);
+  void updateGUIFontFamily(QFontComboBox *fontSelector, const QString& setting);
+  void updateGUIFontSize(QComboBox *fsSelector, const QString& setting);
+  void updateLocalAppParams();
+  void addLocalAppParameter(const Settings::LocalAppParameterType&);
+  void moveListBoxRow(QListWidget *listBox, int offset);
 
   /** Set value from combobox to settings */
-  void applyComboBox(QComboBox *comboBox, int val, Settings::SettingsEntryEnum& entry);
+  void applyComboBox(QComboBox *comboBox, int val, Settings::SettingsEntryEnum<std::string>& entry);
 
   QSettings::SettingsMap defaultmap;
   QHash<const QAction *, QWidget *> prefPages;
+  nlohmann::json inMemoryAISettings;
+  QTimer *aiSaveTimer = nullptr;
+  QString currentLoadedProfileName;
+  bool printPageSetupDone{false};
+};
 
-  static Preferences *instance;
-  static const char *featurePropertyName;
+class GlobalPreferences
+{
+public:
+  static Preferences *inst();
 };

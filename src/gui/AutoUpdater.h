@@ -1,7 +1,7 @@
 #pragma once
 
-#include <QString>
 #include <QObject>
+#include <QString>
 
 class QAction;
 class QMenu;
@@ -25,7 +25,6 @@ public:
 
 public slots:
   virtual void checkForUpdates() = 0;
-
 
 public:
   QAction *updateAction{nullptr};

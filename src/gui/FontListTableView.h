@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QString>
 #include <QTableView>
+#include <QWidget>
 
 class FontListTableView : public QTableView
 {

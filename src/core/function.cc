@@ -24,26 +24,36 @@
  *
  */
 
-#include "Arguments.h"
-#include "Expression.h"
-#include "function.h"
+#include "core/function.h"
 
+#include <cstddef>
+#include <memory>
+#include <ostream>
 #include <utility>
 
-BuiltinFunction::BuiltinFunction(Value(*f)(const std::shared_ptr<const Context>&, const FunctionCall *), const Feature *feature) :
-  evaluate(f),
-  feature(feature)
-{}
+#include "core/AST.h"
+#include "core/Arguments.h"
+#include "core/Assignment.h"
+#include "core/Context.h"
+#include "core/Expression.h"
+#include "core/Value.h"
 
-BuiltinFunction::BuiltinFunction(Value(*f)(Arguments, const Location&), const Feature *feature) :
-  feature(feature)
+BuiltinFunction::BuiltinFunction(Value (*f)(const std::shared_ptr<const Context>&, const FunctionCall *),
+                                 const Feature *feature)
+  : evaluate(f), feature(feature)
 {
-  evaluate = [f] (const std::shared_ptr<const Context>& context, const FunctionCall *call) {
-      return f(Arguments(call->arguments, context), call->location());
-    };
 }
 
-UserFunction::UserFunction(const char *name, AssignmentList& parameters, std::shared_ptr<Expression> expr, const Location& loc)
+BuiltinFunction::BuiltinFunction(Value (*f)(Arguments, const Location&), const Feature *feature)
+  : feature(feature)
+{
+  evaluate = [f](const std::shared_ptr<const Context>& context, const FunctionCall *call) {
+    return f(Arguments(call->arguments, context), call->location());
+  };
+}
+
+UserFunction::UserFunction(const char *name, AssignmentList& parameters,
+                           std::shared_ptr<Expression> expr, const Location& loc)
   : ASTNode(loc), name(name), parameters(parameters), expr(std::move(expr))
 {
 }

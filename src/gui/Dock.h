@@ -1,8 +1,8 @@
 #pragma once
 
-#include <QString>
 #include <QAction>
 #include <QDockWidget>
+#include <QString>
 
 class Dock : public QDockWidget
 {
@@ -10,15 +10,20 @@ class Dock : public QDockWidget
 
 public:
   Dock(QWidget *parent = nullptr);
-  void setConfigKey(const QString& configKey);
-  void setAction(QAction *action);
-  void disableSettingsUpdate();
+  virtual ~Dock();
+
+  void setName(const QString& name_);
+  [[nodiscard]] QString getName() const;
+
+  void setNameSuffix(const QString& namesuffix_);
+  void setTitleBarVisibility(bool isVisible);
+  void updateTitle();
 
 public slots:
-  void setVisible(bool visible) override;
+  void onTopLevelStatusChanged(bool);
 
 private:
-  QString configKey;
-  QAction *action{nullptr};
-  bool updateSettings{true};
+  QString name;
+  QString namesuffix;
+  QWidget *dockTitleWidget;
 };

@@ -1,12 +1,10 @@
 #pragma once
 
-#include <cstdio>
-#include <iostream>
-#include <string>
 #include <map>
+#include <string>
 #include <vector>
 
-#include "exceptions.h"
+#include "utils/exceptions.h"
 
 class Feature
 {
@@ -14,19 +12,22 @@ public:
   using list_t = std::vector<Feature *>;
   using iterator = list_t::iterator;
 
-  static const Feature ExperimentalFastCsg;
-  static const Feature ExperimentalFastCsgSafer;
-  static const Feature ExperimentalFastCsgDebug;
-  static const Feature ExperimentalManifold;
   static const Feature ExperimentalRoof;
   static const Feature ExperimentalInputDriverDBus;
   static const Feature ExperimentalLazyUnion;
   static const Feature ExperimentalVxORenderersIndexing;
-  static const Feature ExperimentalTextMetricsFunctions;
-  static const Feature ExperimentalImportFunction;
   static const Feature ExperimentalPredictibleOutput;
+  static const Feature ExperimentalVectorSwizzle;
+  static const Feature ExperimentalDiscretizationByError;
+  static const Feature ExperimentalAiFeatures;
 #ifdef ENABLE_PYTHON
   static const Feature ExperimentalPythonEngine;
+#endif
+
+#ifdef ENABLE_GUI_TESTS
+  static constexpr bool HasGuiTesting{true};
+#else
+  static constexpr bool HasGuiTesting{false};
 #endif
 
   [[nodiscard]] const std::string& get_name() const;
@@ -52,7 +53,7 @@ private:
   static map_t feature_map;
   static list_t feature_list;
 
-  Feature(const std::string& name, std::string description);
+  Feature(const std::string& name, std::string description, bool hidden = false);
   virtual ~Feature() = default;
 };
 

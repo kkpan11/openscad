@@ -1,8 +1,9 @@
-#include "ProgressWidget.h"
-#include <QTimer>
+#include "gui/ProgressWidget.h"
 
-ProgressWidget::ProgressWidget(QWidget *parent)
-  : QWidget(parent)
+#include <QTimer>
+#include <QWidget>
+
+ProgressWidget::ProgressWidget(QWidget *parent) : QWidget(parent)
 {
   setupUi(this);
   setRange(0, 1000);
@@ -10,8 +11,7 @@ ProgressWidget::ProgressWidget(QWidget *parent)
   this->wascanceled = false;
   this->starttime.start();
 
-  connect(this->stopButton, SIGNAL(clicked()), this, SLOT(cancel()));
-  QTimer::singleShot(1000, this, SIGNAL(requestShow()));
+  QTimer::singleShot(1000, this, &ProgressWidget::requestShow);
 }
 
 bool ProgressWidget::wasCanceled() const
@@ -30,6 +30,11 @@ int ProgressWidget::elapsedTime() const
 void ProgressWidget::cancel()
 {
   this->wascanceled = true;
+}
+
+void ProgressWidget::on_stopButton_clicked()
+{
+  cancel();
 }
 
 void ProgressWidget::setRange(int minimum, int maximum)

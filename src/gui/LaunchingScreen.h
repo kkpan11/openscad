@@ -1,10 +1,15 @@
 #pragma once
 
-#include <QString>
 #include <QDialog>
+#include <QListWidgetItem>
+#include <QModelIndex>
+#include <QString>
+#include <QStringList>
 #include <QTreeWidgetItem>
+#include <QVariant>
+#include <QWidget>
 
-#include "qtgettext.h" // IWYU pragma: keep
+#include "gui/qtgettext.h"  // IWYU pragma: keep
 #include "ui_LaunchingScreen.h"
 
 class LaunchingScreen : public QDialog, public Ui::LaunchingScreen
@@ -22,13 +27,20 @@ public slots:
   void openFile(const QString& filename);
 
 private slots:
-  void checkboxState(bool state) const;
+  void on_checkBox_toggled(bool checked) const;
   void enableRecentButton(const QModelIndex& current, const QModelIndex& previous);
-  void enableExampleButton(QTreeWidgetItem *current, QTreeWidgetItem *previous);
+  void on_treeWidget_currentItemChanged(QTreeWidgetItem *current, QTreeWidgetItem *previous);
   void openUserFile();
   void openRecent();
   void openExample();
   void openUserManualURL() const;
+  void on_pushButtonNew_clicked();
+  void on_pushButtonOpen_clicked();
+  void on_pushButtonHelp_clicked();
+  void on_recentList_itemDoubleClicked(QListWidgetItem *item);
+  void on_treeWidget_itemDoubleClicked(QTreeWidgetItem *item, int column);
+  void on_openRecentButton_clicked();
+  void on_openExampleButton_clicked();
 
 private:
   void checkOpen(const QVariant& data, bool forceShowEditor);

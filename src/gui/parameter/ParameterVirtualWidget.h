@@ -1,9 +1,12 @@
 #pragma once
 
+#include <QWidget>
 #include <boost/optional.hpp>
-#include "qtgettext.h"
+#include <vector>
+
+#include "core/customizer/ParameterObject.h"
+#include "gui/qtgettext.h"
 #include "ui_ParameterDescriptionWidget.h"
-#include "ParameterObject.h"
 
 enum class DescriptionStyle { ShowDetails, Inline, HideDetails, DescriptionOnly };
 
@@ -12,7 +15,6 @@ class ParameterDescriptionWidget : public QWidget, public Ui::ParameterDescripti
   Q_OBJECT
 
 public:
-
   ParameterDescriptionWidget(QWidget *parent);
   void setDescription(ParameterObject *parameter, DescriptionStyle descriptionStyle);
 };
@@ -28,7 +30,7 @@ public:
   // Parent container (ParameterWidget) notifies when preview is updated,
   // so that widgets with immediate AND delayed changes can keep track
   // and avoid emitting excess changed() signals.
-  virtual void valueApplied() { }
+  virtual void valueApplied() {}
   // Widgets which are immediate only (combobox and checkbox) don't need to keep track.
 
 signals:

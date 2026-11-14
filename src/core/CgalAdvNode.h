@@ -1,21 +1,18 @@
 #pragma once
 
-#include "node.h"
-#include "linalg.h"
+#include <string>
 
-enum class CgalAdvType {
-  MINKOWSKI,
-  HULL,
-  FILL,
-  RESIZE
-};
+#include "core/ModuleInstantiation.h"
+#include "core/node.h"
+#include "geometry/linalg.h"
+
+enum class CgalAdvType { MINKOWSKI, HULL, FILL, RESIZE };
 
 class CgalAdvNode : public AbstractNode
 {
 public:
   VISITABLE();
-  CgalAdvNode(const ModuleInstantiation *mi, CgalAdvType type) : AbstractNode(mi), type(type) {
-  }
+  CgalAdvNode(const ModuleInstantiation *mi, CgalAdvType type) : AbstractNode(mi), type(type) {}
   std::string toString() const override;
   std::string name() const override;
 

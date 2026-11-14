@@ -23,18 +23,25 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
+#include "io/import.h"
 
+#include <memory>
 #include <string>
-#include "import.h"
-#include "printutils.h"
-#include "PolySet.h"
 
-const std::string get_lib3mf_version() {
+#include "core/AST.h"
+#include "geometry/PolySet.h"
+#include "io/lib3mf_utils.h"
+#include "utils/printutils.h"
+
+std::string get_lib3mf_version()
+{
   return "(not enabled)";
 }
 
-std::unique_ptr<class Geometry> import_3mf(const std::string&, const Location& loc)
+std::unique_ptr<class PolySet> import_3mf(const std::string&, const Location& loc)
 {
-  LOG(message_group::Warning, "Import from 3MF format was not enabled when building the application, import() at line %1$d", loc.firstLine());
+  LOG(message_group::Warning,
+      "Import from 3MF format was not enabled when building the application, import() at line %1$d",
+      loc.firstLine());
   return PolySet::createEmpty();
 }

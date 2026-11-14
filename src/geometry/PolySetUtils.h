@@ -1,8 +1,9 @@
 #pragma once
 
 #include <memory>
+#include <string>
 
-#include "Geometry.h"
+#include "geometry/Geometry.h"
 
 class Polygon2d;
 class PolySet;
@@ -17,4 +18,4 @@ std::shared_ptr<const PolySet> getGeometryAsPolySet(const std::shared_ptr<const 
 
 std::string polySetToPolyhedronSource(const PolySet& ps);
 
-}
+}  // namespace PolySetUtils

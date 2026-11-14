@@ -23,13 +23,20 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
+#include "io/import.h"
 
+#include <exception>
+#include <filesystem>
 #include <fstream>
-#include <json.hpp>
+#include <string>
+#include <utility>
 
-#include "Value.h"
-#include "printutils.h"
-#include "EvaluationSession.h"
+#include "core/AST.h"
+#include "core/EvaluationSession.h"
+#include "core/Value.h"
+#include "io/fileutils.h"
+#include "json/json.hpp"
+#include "utils/printutils.h"
 
 using json = nlohmann::json;
 
@@ -66,22 +73,23 @@ ObjectType to_obj(const json& j, EvaluationSession *session)
   return obj;
 }
 
-} // namespace
+}  // namespace
 
 Value import_json(const std::string& filename, EvaluationSession *session, const Location& loc)
 {
-  std::ifstream i(filename);
+  std::ifstream i(std::filesystem::u8path(filename));
 
   try {
     if (i) {
-      json j;
-      i >> j;
+      json j = json::parse(i);
       return Value{to_value(j, session)};
     } else {
-      LOG(message_group::Warning, loc, "", "Could not read file '%1$s'", filename);
+      LOG(message_group::Warning, loc, session->documentRoot(), "Could not read file '%1$s'",
+          fs_uncomplete(filename, session->documentRoot()).generic_string());
     }
   } catch (const std::exception& e) {
-    LOG(message_group::Warning, loc, "", "Failed to parse file '%1$s': %s", filename, e.what());
+    LOG(message_group::Warning, loc, session->documentRoot(), "Failed to parse file '%1$s': %2$s",
+        fs_uncomplete(filename, session->documentRoot()).generic_string(), e.what());
   }
 
   return Value::undefined.clone();

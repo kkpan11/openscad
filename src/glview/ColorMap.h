@@ -1,16 +1,18 @@
 #pragma once
 
+#include <functional>
+#include <memory>
 #include <map>
 #include <string>
 #include <list>
 #include <memory.h>
 
-#include "linalg.h"
+#include "geometry/linalg.h"
 
-#include <boost/filesystem.hpp>
+#include <filesystem>
 #include <boost/property_tree/ptree.hpp>
 
-namespace fs = boost::filesystem;
+namespace fs = std::filesystem;
 
 enum class RenderColor {
   BACKGROUND_COLOR,
@@ -73,7 +75,7 @@ class ColorMap
   using colorscheme_set_t = std::multimap<int, std::shared_ptr<RenderColorScheme>, std::less<>>;
 
 public:
-  static ColorMap *inst(bool erase = false);
+  static ColorMap& instance();
 
   [[nodiscard]] const char *defaultColorSchemeName() const;
   [[nodiscard]] const ColorScheme& defaultColorScheme() const;
@@ -84,9 +86,14 @@ public:
   static Color4f getContrastColor(const Color4f& col);
   static Color4f getColorHSV(const Color4f& col);
 
+  ColorMap(const ColorMap&) = delete;
+  ColorMap& operator=(const ColorMap&) = delete;
+  ColorMap(ColorMap&&) = delete;
+  ColorMap& operator=(ColorMap&&) = delete;
+
 private:
   ColorMap();
-  virtual ~ColorMap() = default;
+  ~ColorMap() = default;
   void dump() const;
   colorscheme_set_t enumerateColorSchemes();
   void enumerateColorSchemesInPath(colorscheme_set_t& result_set, const fs::path& path);

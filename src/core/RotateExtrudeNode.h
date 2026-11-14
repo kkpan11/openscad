@@ -1,24 +1,32 @@
 #pragma once
 
-#include "node.h"
-#include "Value.h"
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "core/CurveDiscretizer.h"
+#include "core/ModuleInstantiation.h"
+#include "core/Value.h"
+#include "core/node.h"
+
+class CurveDiscretizer;
 
 class RotateExtrudeNode : public AbstractPolyNode
 {
 public:
   VISITABLE();
-  RotateExtrudeNode(const ModuleInstantiation *mi) : AbstractPolyNode(mi) {
+  RotateExtrudeNode(const ModuleInstantiation *mi, CurveDiscretizer discretizer)
+    : AbstractPolyNode(mi), discretizer(std::move(discretizer))
+  {
     convexity = 0;
-    fn = fs = fa = 0;
-    origin_x = origin_y = scale = 0;
     angle = 360;
+    start = 0;
   }
+
   std::string toString() const override;
   std::string name() const override { return "rotate_extrude"; }
 
   int convexity;
-  double fn, fs, fa;
-  double origin_x, origin_y, scale, angle;
-  Filename filename;
-  std::string layername;
+  CurveDiscretizer discretizer;
+  double angle, start;
 };

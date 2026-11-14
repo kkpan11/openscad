@@ -1,40 +1,48 @@
-#include "SourceFileCache.h"
-#include "StatCache.h"
-#include "SourceFile.h"
-#include "printutils.h"
-#include "openscad.h"
-#include <boost/format.hpp>
+#include "core/SourceFileCache.h"
 
-#include <cstdio>
-#include <fstream>
 #include <sys/stat.h>
+
 #include <algorithm>
+#include <boost/format.hpp>
+#include <cstdio>
+#include <ctime>
+#include <filesystem>
+#include <fstream>
+#include <string>
+
+#include "core/SourceFile.h"
+#include "core/StatCache.h"
+#include "openscad.h"
+#include "utils/printutils.h"
 
 /*!
    FIXME: Implement an LRU scheme to avoid having an ever-growing source file cache
+   Only if long-running and continually `use<>`ing unique filenames.
+   Will need to be returning shared_ptr<> if you do.
  */
 
 SourceFileCache *SourceFileCache::inst = nullptr;
 
 /*!
-   Reevaluate the given file and all its dependencies and recompile anything
-   needing reevaluation. Updates the cache if necessary.
+   Reprocess the given file and all its dependencies and reparse anything
+   necessary. Updates the cache if necessary.
    The given filename must be absolute.
 
-   Sets the given source file reference to the new file, or nullptr on any error (e.g. compile
+   Sets the given source file reference to the new file, or nullptr on any error (e.g. parse
    error or file not found).
 
    Returns the latest modification time of the file, its dependencies or includes.
  */
-std::time_t SourceFileCache::evaluate(const std::string& mainFile, const std::string& filename, SourceFile *& sourceFile)
+std::time_t SourceFileCache::process(const std::string& mainFile, const std::string& filename,
+                                     SourceFile *& sourceFile)
 {
   sourceFile = nullptr;
   auto entry = this->entries.find(filename);
   bool found{entry != this->entries.end()};
   SourceFile *file{found ? entry->second.file : nullptr};
 
-  // Don't try to recursively evaluate - if the file changes
-  // during evaluation, that would be really bad.
+  // Don't try to recursively process - if the file changes
+  // during processing, that would be really bad.
   if (file && file->isHandlingDependencies()) return 0;
 
   // Create cache ID
@@ -57,17 +65,17 @@ std::time_t SourceFileCache::evaluate(const std::string& mainFile, const std::st
   }
   cacheEntry.mtime = st.st_mtime;
 
-  bool shouldCompile = true;
+  bool shouldParse = true;
   if (found) {
-    // Files should only be recompiled if the cache ID changed
+    // Files should only be reparsed if the cache ID changed
     if (cacheEntry.cache_id == cache_id) {
-      shouldCompile = false;
-      // Recompile if includes changed
+      shouldParse = false;
+      // Reparse if includes changed
       if (cacheEntry.parsed_file) {
         std::time_t mtime = cacheEntry.parsed_file->includesChanged();
         if (mtime > cacheEntry.includes_mtime) {
           cacheEntry.includes_mtime = mtime;
-          shouldCompile = true;
+          shouldParse = true;
         }
       }
     }
@@ -75,11 +83,11 @@ std::time_t SourceFileCache::evaluate(const std::string& mainFile, const std::st
 
 #ifdef DEBUG
   // Causes too much debug output
-  //if (!shouldCompile) LOG(message_group::NONE,,"Using cached library: %1$s (%2$p)",filename,file);
+  // if (!shouldParse) LOG(message_group::NONE,,"Using cached library: %1$s (%2$p)",filename,file);
 #endif
 
-  // If cache lookup failed (non-existing or old timestamp), compile file
-  if (shouldCompile) {
+  // If cache lookup failed (non-existing or old timestamp), parse file
+  if (shouldParse) {
 #ifdef DEBUG
     if (found) {
       PRINTDB("Recompiling cached library: %s (%s)", filename % cache_id);
@@ -90,7 +98,9 @@ std::time_t SourceFileCache::evaluate(const std::string& mainFile, const std::st
 
     std::string text;
     {
-      std::ifstream ifs(filename.c_str());
+      // filename is UTF-8. Opening through a path (instead of a char*) makes
+      // non-ASCII names work on Windows, where narrow names use the ANSI code page.
+      std::ifstream ifs(std::filesystem::u8path(filename));
       if (!ifs.is_open()) {
         LOG(message_group::Warning, "Can't open library file '%1$s'\n", filename);
         return 0;
@@ -101,8 +111,9 @@ std::time_t SourceFileCache::evaluate(const std::string& mainFile, const std::st
     print_messages_push();
 
     delete cacheEntry.parsed_file;
-    file = parse(cacheEntry.parsed_file, text, filename, mainFile, false) ? cacheEntry.parsed_file : nullptr;
-    PRINTDB("compiled file: %s", filename);
+    file =
+      parse(cacheEntry.parsed_file, text, filename, mainFile, false) ? cacheEntry.parsed_file : nullptr;
+    PRINTDB("parsed file: %s", filename);
     cacheEntry.file = file;
     cacheEntry.cache_id = cache_id;
     auto mod = file ? file : cacheEntry.parsed_file;
@@ -128,7 +139,8 @@ SourceFile *SourceFileCache::lookup(const std::string& filename)
   return it != this->entries.end() ? it->second.file : nullptr;
 }
 
-void SourceFileCache::clear_markers() {
+void SourceFileCache::clear_markers()
+{
   for (const auto& entry : instance()->entries)
     if (auto lib = entry.second.file) lib->clearHandlingDependencies();
 }

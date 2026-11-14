@@ -1,16 +1,24 @@
-#include "Polygon2d.h"
+#include "geometry/Polygon2d.h"
 
+#include <cstddef>
 #include <memory>
-#include "printutils.h"
+#include <sstream>
+#include <string>
+#include <utility>
+
+#include "geometry/Geometry.h"
+#include "geometry/linalg.h"
+#include "utils/printutils.h"
 #ifdef ENABLE_MANIFOLD
-#include "manifoldutils.h"
+#include "geometry/manifold/manifoldutils.h"
 #endif
-#include "cgalutils.h"
 #include "Feature.h"
-#include "PolySet.h"
+#include "geometry/PolySet.h"
+#include "geometry/cgal/cgalutils.h"
+#include "glview/RenderSettings.h"
 
-
-Polygon2d::Polygon2d(Outline2d outline) : sanitized(true) {
+Polygon2d::Polygon2d(Outline2d outline) : sanitized(true)
+{
   addOutline(std::move(outline));
 }
 
@@ -19,7 +27,8 @@ std::unique_ptr<Geometry> Polygon2d::copy() const
   return std::make_unique<Polygon2d>(*this);
 }
 
-BoundingBox Outline2d::getBoundingBox() const {
+BoundingBox Outline2d::getBoundingBox() const
+{
   BoundingBox bbox;
   for (const auto& v : this->vertices) {
     bbox.extend(Vector3d(v[0], v[1], 0));
@@ -110,10 +119,7 @@ void Polygon2d::resize(const Vector2d& newsize, const Eigen::Matrix<bool, 2, 1>&
                     !autosize[1] || (newsize[1] > 0) ? scale[1] : autoscale);
 
   Transform2d t;
-  t.matrix() <<
-    newscale[0], 0, 0,
-    0, newscale[1], 0,
-    0, 0, 1;
+  t.matrix() << newscale[0], 0, 0, 0, newscale[1], 0, 0, 0, 1;
 
   this->transform(t);
 }
@@ -148,10 +154,7 @@ double Polygon2d::area() const
     const auto& v1 = ps->vertices[poly[0]];
     const auto& v2 = ps->vertices[poly[1]];
     const auto& v3 = ps->vertices[poly[2]];
-    area += 0.5 * (
-      v1.x() * (v2.y() - v3.y())
-      + v2.x() * (v3.y() - v1.y())
-      + v3.x() * (v1.y() - v2.y()));
+    area += 0.5 * (v1.x() * (v2.y() - v3.y()) + v2.x() * (v3.y() - v1.y()) + v3.x() * (v1.y() - v2.y()));
   }
   return area;
 }
@@ -164,18 +167,17 @@ double Polygon2d::area() const
    * Rendering (both preview and render mode)
    * Polygon area calculation
    *
-   * One use-case is special: For geometry construction in Manifold mode, we require this function to 
+   * One use-case is special: For geometry construction in Manifold mode, we require this function to
    * guarantee that vertices and their order are untouched (apart from adding a zero 3rd dimension)
-   * 
+   *
  */
 std::unique_ptr<PolySet> Polygon2d::tessellate() const
 {
   PRINTDB("Polygon2d::tessellate(): %d outlines", this->outlines().size());
-#ifdef ENABLE_MANIFOLD
-  if (Feature::ExperimentalManifold.is_enabled()) {
+#if defined(ENABLE_MANIFOLD) && defined(USE_MANIFOLD_TRIANGULATOR)
+  if (RenderSettings::inst()->backend3D == RenderBackend3D::ManifoldBackend) {
     return ManifoldUtils::createTriangulatedPolySetFromPolygon2d(*this);
-  }
-  else
+  } else
 #endif
-  return CGALUtils::createTriangulatedPolySetFromPolygon2d(*this);
+    return CGALUtils::createTriangulatedPolySetFromPolygon2d(*this);
 }

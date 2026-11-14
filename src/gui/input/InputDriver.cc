@@ -23,14 +23,16 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
-#include "InputDriver.h"
-#include "InputDriverEvent.h"
+#include "gui/input/InputDriver.h"
+
+#include <QEvent>
+
+#include "gui/input/InputDriverEvent.h"
 
 const QEvent::Type InputEvent::eventType = static_cast<QEvent::Type>(QEvent::registerEventType());
 
 InputEvent::InputEvent(const bool activeOnly) : QEvent(eventType), activeOnly(activeOnly)
 {
-
 }
 
 bool InputDriver::isOpen() const

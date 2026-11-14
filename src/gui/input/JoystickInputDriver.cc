@@ -23,20 +23,22 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
-#include <string>
+#include "gui/input/JoystickInputDriver.h"
+
 #include <fcntl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <boost/format.hpp>
-#include <utility>
-
-#include "InputDriverManager.h"
-#include "JoystickInputDriver.h"
-#include "printutils.h"
-
-#include <unistd.h>
 #include <linux/input.h>
 #include <linux/joystick.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <boost/format.hpp>
+#include <string>
+#include <utility>
+
+#include "gui/input/InputDriverEvent.h"
+#include "gui/input/InputDriverManager.h"
+#include "utils/printutils.h"
 
 void JoystickInputDriver::run()
 {
@@ -55,7 +57,8 @@ void JoystickInputDriver::run()
       InputDriverManager::instance()->sendEvent(new InputEventButtonChanged(js.number, js.value != 0));
       break;
     case JS_EVENT_AXIS:
-      InputDriverManager::instance()->sendEvent(new InputEventAxisChanged(js.number, js.value / 32767.0));
+      InputDriverManager::instance()->sendEvent(
+        new InputEventAxisChanged(js.number, js.value / 32767.0));
       break;
     }
   }
@@ -100,12 +103,8 @@ const std::string& JoystickInputDriver::get_name() const
 
 std::string JoystickInputDriver::get_info() const
 {
-  return STR(
-    get_name(), " ", (isOpen() ? "open" : "not open"), " ",
-    "Name: ", name, " ",
-    "Axis: ", (int) axes, " ",
-    "Buttons: ", (int) buttons, " "
-    );
+  return STR(get_name(), " ", (isOpen() ? "open" : "not open"), " ", "Name: ", name, " ",
+             "Axis: ", (int)axes, " ", "Buttons: ", (int)buttons, " ");
 }
 
 void JoystickInputDriver::setJoystickNr(std::string jnr)

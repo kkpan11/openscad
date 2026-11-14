@@ -1,20 +1,24 @@
 #pragma once
 
+#include <ctime>
+#include <memory>
+#include <ostream>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
-#include <ctime>
+#include <vector>
 
-#include "module.h"
-#include "LocalScope.h"
-#include "IndicatorData.h"
+#include "core/AST.h"
+#include "core/IndicatorData.h"
+#include "core/LocalScope.h"
 
 class SourceFile : public ASTNode
 {
 public:
   SourceFile(std::string path, std::string filename);
 
-  std::shared_ptr<AbstractNode> instantiate(const std::shared_ptr<const Context>& context, std::shared_ptr<const class FileContext> *resulting_file_context) const;
+  std::shared_ptr<AbstractNode> instantiate(
+    const std::shared_ptr<const Context>& context,
+    std::shared_ptr<const class FileContext> *resulting_file_context) const;
   void print(std::ostream& stream, const std::string& indent) const override;
 
   void setModulePath(const std::string& path) { this->path = path; }
@@ -31,7 +35,7 @@ public:
   const std::string& getFilename() const { return this->filename; }
   const std::string getFullpath() const;
 
-  LocalScope scope;
+  const std::shared_ptr<LocalScope> scope;
   std::vector<std::string> usedlibs;
 
   std::vector<IndicatorData> indicatorData;

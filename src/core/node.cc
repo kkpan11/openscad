@@ -25,17 +25,23 @@
  */
 
 #include "core/node.h"
-#include "ModuleInstantiation.h"
-#include "progress.h"
+
+#include <algorithm>
+#include <cstddef>
+#include <deque>
 #include <functional>
 #include <iostream>
-#include <algorithm>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "core/AST.h"
+#include "core/ModuleInstantiation.h"
+#include "core/progress.h"
 
 size_t AbstractNode::idx_counter;
 
-AbstractNode::AbstractNode(const ModuleInstantiation *mi) :
-  modinst(mi),
-  idx(idx_counter++)
+AbstractNode::AbstractNode(const ModuleInstantiation *mi) : modinst(mi), idx(idx_counter++)
 {
 }
 
@@ -44,7 +50,8 @@ std::string AbstractNode::toString() const
   return this->name() + "()";
 }
 
-std::shared_ptr<const AbstractNode> AbstractNode::getNodeByID(int idx, std::deque<std::shared_ptr<const AbstractNode>>& path) const
+std::shared_ptr<const AbstractNode> AbstractNode::getNodeByID(
+  int idx, std::deque<std::shared_ptr<const AbstractNode>>& path) const
 {
   auto self = shared_from_this();
   if (this->idx == idx) {
@@ -59,6 +66,63 @@ std::shared_ptr<const AbstractNode> AbstractNode::getNodeByID(int idx, std::dequ
     }
   }
   return nullptr;
+}
+
+void AbstractNode::getCodeLocation(int currentLevel, int includeLevel, int *firstLine, int *firstColumn,
+                                   int *lastLine, int *lastColumn, int nestedModuleDepth) const
+{
+  auto location = modinst->location();
+  if (currentLevel >= includeLevel && nestedModuleDepth == 0) {
+    if (*firstLine < 0 || *firstLine > location.firstLine()) {
+      *firstLine = location.firstLine();
+      *firstColumn = location.firstColumn();
+    } else if (*firstLine == location.firstLine() && *firstColumn > location.firstColumn()) {
+      *firstColumn = location.firstColumn();
+    }
+
+    if (*lastLine < 0 || *lastLine < location.lastLine()) {
+      *lastLine = location.lastLine();
+      *lastColumn = location.lastColumn();
+    } else {
+      if (*firstLine < 0 || *firstLine > location.firstLine()) {
+        *firstLine = location.firstLine();
+        *firstColumn = location.firstColumn();
+      } else if (*firstLine == location.firstLine() && *firstColumn > location.firstColumn()) {
+        *firstColumn = location.firstColumn();
+      }
+      if (*lastLine < 0 || *lastLine < location.lastLine()) {
+        *lastLine = location.lastLine();
+        *lastColumn = location.lastColumn();
+      } else if (*lastLine == location.lastLine() && *lastColumn < location.lastColumn()) {
+        *lastColumn = location.lastColumn();
+      }
+    }
+  }
+
+  if (verbose_name().rfind("module", 0) == 0) {
+    nestedModuleDepth++;
+  }
+  if (modinst->name() == "children") {
+    nestedModuleDepth--;
+  }
+
+  if (nestedModuleDepth >= 0) {
+    for (const auto& node : children) {
+      node->getCodeLocation(currentLevel + 1, includeLevel, firstLine, firstColumn, lastLine, lastColumn,
+                            nestedModuleDepth);
+    }
+  }
+}
+
+void AbstractNode::findNodesWithSameMod(const std::shared_ptr<const AbstractNode>& node_mod,
+                                        std::vector<std::shared_ptr<const AbstractNode>>& nodes) const
+{
+  if (node_mod->modinst == modinst) {
+    nodes.push_back(shared_from_this());
+  }
+  for (const auto& step : children) {
+    step->findNodesWithSameMod(node_mod, nodes);
+  }
 }
 
 std::string GroupNode::name() const
@@ -95,7 +159,8 @@ std::string AbstractIntersectionNode::name() const
 
 void AbstractNode::progress_prepare()
 {
-  std::for_each(this->children.begin(), this->children.end(), std::mem_fn(&AbstractNode::progress_prepare));
+  std::for_each(this->children.begin(), this->children.end(),
+                std::mem_fn(&AbstractNode::progress_prepare));
   this->progress_mark = ++progress_report_count;
 }
 
@@ -116,11 +181,13 @@ std::ostream& operator<<(std::ostream& stream, const AbstractNode& node)
    If a second root modifier was found, nextLocation (if non-zero) will be set to point to
    the location of that second modifier.
  */
-std::shared_ptr<AbstractNode> find_root_tag(const std::shared_ptr<AbstractNode>& node, const Location **nextLocation)
+std::shared_ptr<AbstractNode> find_root_tag(const std::shared_ptr<AbstractNode>& node,
+                                            const Location **nextLocation)
 {
   std::shared_ptr<AbstractNode> rootTag;
 
-  std::function<void (const std::shared_ptr<const AbstractNode>&)> recursive_find_tag = [&](const std::shared_ptr<const AbstractNode>& node) {
+  std::function<void(const std::shared_ptr<const AbstractNode>&)> recursive_find_tag =
+    [&](const std::shared_ptr<const AbstractNode>& node) {
       for (const auto& child : node->children) {
         if (child->modinst->tag_root) {
           if (!rootTag) {

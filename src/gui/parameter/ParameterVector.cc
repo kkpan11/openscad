@@ -1,9 +1,18 @@
-#include "ParameterVector.h"
-#include "IgnoreWheelWhenNotFocused.h"
+#include "gui/parameter/ParameterVector.h"
 
-ParameterVector::ParameterVector(QWidget *parent, VectorParameter *parameter, DescriptionStyle descriptionStyle) :
-  ParameterVirtualWidget(parent, parameter),
-  parameter(parameter)
+#include <QWidget>
+#include <algorithm>
+#include <cassert>
+#include <cmath>
+#include <cstddef>
+#include <limits>
+
+#include "gui/IgnoreWheelWhenNotFocused.h"
+#include "gui/parameter/ParameterVirtualWidget.h"
+
+ParameterVector::ParameterVector(QWidget *parent, VectorParameter *parameter,
+                                 DescriptionStyle descriptionStyle)
+  : ParameterVirtualWidget(parent, parameter), parameter(parameter)
 {
   setupUi(this);
   descriptionWidget->setDescription(parameter, descriptionStyle);
@@ -34,7 +43,7 @@ ParameterVector::ParameterVector(QWidget *parent, VectorParameter *parameter, De
 
   // clang generates a bogus warning that ignoreWheelWhenNotFocused may be leaked
   // NOLINTBEGIN(*NewDeleteLeaks)
-  if (spinboxes.size() > 0) { // only allocate if there are spinboxes to use the function
+  if (spinboxes.size() > 0) {  // only allocate if there are spinboxes to use the function
     // The parent (this) takes ownership of the object
     auto *ignoreWheelWhenNotFocused = new IgnoreWheelWhenNotFocused(this);
     for (auto spinbox : spinboxes) {
@@ -74,14 +83,16 @@ ParameterVector::ParameterVector(QWidget *parent, VectorParameter *parameter, De
     spinbox->setRange(minimum, maximum);
     spinbox->setSingleStep(step);
     spinbox->show();
-    connect(spinbox, SIGNAL(valueChanged(double)), this, SLOT(onChanged()));
-    connect(spinbox, SIGNAL(editingFinished()), this, SLOT(onEditingFinished()));
+    connect(spinbox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &ParameterVector::onChanged);
+    connect(spinbox, &QDoubleSpinBox::editingFinished, this, &ParameterVector::onEditingFinished);
   }
 
   ParameterVector::setValue();
 }
 
-void ParameterVector::valueApplied() {
+void ParameterVector::valueApplied()
+{
   lastApplied = lastSent;
 }
 

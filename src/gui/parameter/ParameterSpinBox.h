@@ -1,6 +1,9 @@
 #pragma once
 
-#include "ParameterVirtualWidget.h"
+#include <QWidget>
+
+#include "core/customizer/ParameterObject.h"
+#include "gui/parameter/ParameterVirtualWidget.h"
 #include "ui_ParameterSpinBox.h"
 
 class ParameterSpinBox : public ParameterVirtualWidget, Ui::ParameterSpinBox
@@ -20,5 +23,4 @@ private:
   NumberParameter *parameter;
   boost::optional<double> lastSent;
   boost::optional<double> lastApplied;
-
 };

@@ -1,35 +1,49 @@
 #pragma once
 
-#include "Editor.h"
-#include "Geometry.h"
-#include "export.h"
-#include "ExportPdfDialog.h"
-#include "Measurement.h"
-#include "RenderStatistic.h"
-#include "TabManager.h"
-#include "Tree.h"
-#include "UIUtils.h"
-#include "qtgettext.h" // IWYU pragma: keep
-#include "ui_MainWindow.h"
-
+#include <QAction>
+#include <QCloseEvent>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QElapsedTimer>
+#include <QEvent>
+#include <QFile>
+#include <QIODevice>
+#include <QIcon>
+#include <QLabel>
+#include <QList>
+#include <QMainWindow>
+#include <QMap>
+#include <QMutex>
+#include <QObject>
+#include <QPoint>
+#include <QShortcut>
+#include <QSignalMapper>
+#include <QSoundEffect>
+#include <QString>
+#include <QStringList>
+#include <QTime>
+#include <QTimer>
+#include <QUrl>
+#include <QWidget>
+#include <ctime>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
 #include <vector>
-#include <QMainWindow>
-#include <QElapsedTimer>
-#include <QIcon>
-#include <QIODevice>
-#include <QMutex>
-#include <QSoundEffect>
-#include <QTime>
 
+#include "core/Context.h"
+#include "core/SourceFile.h"
+#include "glview/Camera.h"
+#include "glview/Renderer.h"
 #ifdef STATIC_QT_SVG_PLUGIN
 #include <QtPlugin>
 Q_IMPORT_PLUGIN(QSvgPlugin)
 #endif
 
 class BuiltinContext;
-class CGALWorker;
+class GeometryWorker;
 class CSGNode;
 class CSGProducts;
 class FontListDialog;
@@ -37,74 +51,120 @@ class LibraryInfoDialog;
 class Preferences;
 class ProgressWidget;
 class ThrownTogetherRenderer;
+class AIDock;
 
+#include "RenderStatistic.h"
+#include "core/Tree.h"
+#include "geometry/Geometry.h"
+#include "gui/Editor.h"
+#include "gui/Measurement.h"
+#include "gui/RubberBandManager.h"
+#include "gui/TabManager.h"
+#include "gui/UIUtils.h"
+#include "gui/input/InputDriverEvent.h"
+#include "gui/qt-obsolete.h"  // IWYU pragma: keep
+#include "gui/qtgettext.h"    // IWYU pragma: keep
+#include "io/export.h"
+#include "io/export_enums.h"
+#include "ui_MainWindow.h"
+#include "utils/printutils.h"
+#include "utils/scope_guard.hpp"
+
+class UXTest;
 class MainWindow : public QMainWindow, public Ui::MainWindow, public InputEventHandler
 {
   Q_OBJECT
+
+  friend UXTest;
 
 public:
   Preferences *prefs;
 
   QTimer *consoleUpdater;
 
-  bool is_preview;
+  bool isPreview;
 
   QTimer *autoReloadTimer;
   QTimer *waitAfterReloadTimer;
   RenderStatistic renderStatistic;
 
-  SourceFile *root_file; // Result of parsing
-  SourceFile *parsed_file; // Last parse for include list
-  std::shared_ptr<AbstractNode> absolute_root_node; // Result of tree evaluation
-  std::shared_ptr<AbstractNode> root_node; // Root if the root modifier (!) is used
+  std::shared_ptr<SourceFile> rootFile;            // Result of parsing
+  std::shared_ptr<SourceFile> parsedFile;          // Last parse for include list
+  std::shared_ptr<AbstractNode> absoluteRootNode;  // Result of tree evaluation
+  std::shared_ptr<AbstractNode> rootNode;          // Root if the root modifier (!) is used
 #ifdef ENABLE_PYTHON
   bool python_active;
   std::string trusted_edit_document_name;
   std::string untrusted_edit_document_name;
-  bool trust_python_file(const std::string &file, const std::string &content);
+  bool trust_python_file(const std::string& file, const std::string& content);
 #endif
   Tree tree;
-  EditorInterface *activeEditor;
+  EditorInterface *activeEditor = nullptr;
   TabManager *tabManager;
+  AIDock *aiDock;
 
-  std::shared_ptr<const Geometry> root_geom;
-  std::shared_ptr<Renderer> cgalRenderer;
+  std::shared_ptr<const Geometry> rootGeom;
+  std::shared_ptr<Renderer> geomRenderer;
 #ifdef ENABLE_OPENCSG
-  std::shared_ptr<Renderer> opencsgRenderer;
-  std::unique_ptr<class MouseSelector> selector;
+  std::shared_ptr<Renderer> previewRenderer;
 #endif
   std::shared_ptr<Renderer> thrownTogetherRenderer;
 
-  QString last_compiled_doc;
+  QString lastCompiledDoc;
 
-  QAction *actionRecentFile[UIUtils::maxRecentFiles];
-  QMap<QString, QString> knownFileExtensions;
+  std::vector<QAction *> fileActionRecentFiles;
+  QShortcut *shortcutNextWindow{nullptr};
+  QShortcut *shortcutPreviousWindow{nullptr};
 
-  QLabel *versionLabel;
-  QWidget *editorDockTitleWidget;
-  QWidget *consoleDockTitleWidget;
-  QWidget *parameterDockTitleWidget;
-  QWidget *errorLogDockTitleWidget;
-  QWidget *animateDockTitleWidget;
-  QWidget *viewportControlTitleWidget;
+  Measurement::Measurement meas;
 
-  Measurement meas;
-
-  int compileErrors;
-  int compileWarnings;
+  int compileErrors = 0;
+  int compileWarnings = 0;
 
   MainWindow(const QStringList& filenames);
   ~MainWindow() override;
 
 private:
+  QLabel versionLabel;
+  QLabel backend3DLabel;
+
+  RubberBandManager rubberBandManager;
+
+  std::vector<std::pair<Dock *, QString>> docks;
+
   volatile bool isClosing = false;
+  void saveWindowState();
   void consoleOutputRaw(const QString& msg);
+  void clearAllSelectionIndicators();
+  void setSelectionIndicatorStatus(EditorInterface *editor, int nodeIndex,
+                                   EditorSelectionIndicatorStatus status);
+
+  void setupWindow();
+  void setupCoreSubsystems();
+  void setupStatusBar();
+  void setupConsole();
+  void setupErrorLog();
+  void setupEditor(const QStringList& filenames);
+  void setupCustomizer();
+  void setupAnimate();
+  void setupFontList();
+  void setupColorList();
+  void setupViewportControl();
+  void setupPreferences();
+  void setup3DView();
+  void setupInput();
+  void setupDocks();
+  void setupMenusAndActions();
+  void restoreWindowState();
+  void restoreToolBarVisibility();
+  void openRemainingFiles(const QStringList& filenames);
+  void setupAIDock();
 
 protected:
   void closeEvent(QCloseEvent *event) override;
+  void changeEvent(QEvent *event) override;
 
 private slots:
-  void setTabToolBarVisible(int);
   void updateUndockMode(bool undockMode);
   void updateReorderMode(bool reorderMode);
   void setFont(const QString& family, uint size);
@@ -112,26 +172,54 @@ private slots:
   void showProgress();
   void openCSGSettingsChanged();
   void consoleOutput(const Message& msgObj);
-  void setCursor();
+  void setSelection(int index);
+  void updateBackend3DLabel();
+
+  // implements the actions to be done when the selection menu is closing
+  // the seclection menu is the one that show up when right click on the geometry in the 3d view.
+  void onHoveredObjectInSelectionMenu();
+
   void measureFinished();
   void errorLogOutput(const Message& log_msg);
+  void onNavigationOpenContextMenu();
+  void onNavigationCloseContextMenu();
+  void onNavigationHoveredContextMenuEntry();
+  void onNavigationTriggerContextMenuEntry();
+  void setAllMouseViewActions();
+
+  // implement the different actions needed when
+  // the tab manager editor is changed.
+  void onTabManagerEditorChanged(EditorInterface *);
+
+  // implement the different actions needed when
+  // the tab manager editor is about to close one of the tab
+  void onTabManagerAboutToCloseEditor(EditorInterface *);
+
+  // implement the different actions needed when an editor
+  // has its content replaced (because of load)
+  void onTabManagerEditorContentReloaded(EditorInterface *reloadedEditor);
 
 public:
   static void consoleOutput(const Message& msgObj, void *userdata);
   static void errorLogOutput(const Message& log_msg, void *userdata);
-  static void noOutputConsole(const Message&, void *) {} // /dev/null
-  static void noOutputErrorLog(const Message&, void *) {} // /dev/null
+  static void noOutputConsole(const Message&, void *) {}   // /dev/null
+  static void noOutputErrorLog(const Message&, void *) {}  // /dev/null
 
   bool fileChangedOnDisk();
+
+  // Parse the document contained in the editor, update the editors's parameters and returns a SourceFile
+  // object if parsing suceeded. Nullptr otherwise.
+  std::shared_ptr<SourceFile> parseDocument(EditorInterface *editor);
+
   void parseTopLevelDocument();
   void exceptionCleanup();
   void setLastFocus(QWidget *widget);
   void UnknownExceptionCleanup(std::string msg = "");
-
-  bool isLightTheme();
+  void showFind(bool doFindAndReplace);
 
 private:
-  void initActionIcon(QAction *action, const char *darkResource, const char *lightResource);
+  [[nodiscard]] QString getCurrentFileName() const;
+
   void setRenderVariables(ContextHandle<BuiltinContext>& context);
   void updateCompileResult();
   void compile(bool reload, bool forcedone = false);
@@ -139,20 +227,32 @@ private:
   bool checkEditorModified();
   QString dumpCSGTree(const std::shared_ptr<AbstractNode>& root);
 
+  // Opens an independent windows with a text area showing the text given in argument
+  // The "type" is used to specify the type of content with the title of the window,
+  void showTextInWindow(const QString& type, const QString& textToShow);
+
+  // Change the perspective mode of the 3D view.
+  typedef Camera::ProjectionType ProjectionType;
+  void setProjectionType(ProjectionType mode);
+
   void loadViewSettings();
   void loadDesignSettings();
   void prepareCompile(const char *afterCompileSlot, bool procevents, bool preview);
-  void updateWindowSettings(bool console, bool editor, bool customizer, bool errorLog, bool editorToolbar, bool viewToolbar, bool animate, bool ViewportControlWidget);
   void saveBackup();
   void writeBackup(QFile *file);
   void show_examples();
-  void setDockWidgetTitle(QDockWidget *dockWidget, QString prefix, bool topLevel);
   void addKeyboardShortCut(const QList<QAction *>& actions);
   void updateStatusBar(ProgressWidget *progressWidget);
-  void activateWindow(int);
+  void activateDock(Dock *);
+  Dock *findVisibleDockToActivate(int offset) const;
+  Dock *getNextDockFromSender(QObject *sender);
+  void addExportActions(QToolBar *toolbar, QAction *action) const;
+  QAction *formatIdentifierToAction(const std::string& identifier) const;
+  QString getDockBaseName(const QString& title) const;
 
-  LibraryInfoDialog *library_info_dialog{nullptr};
-  FontListDialog *font_list_dialog{nullptr};
+  LibraryInfoDialog *libraryInfoDialog{nullptr};
+  FontListDialog *fontListDialog{nullptr};
+  QSignalMapper *exportFormatMapper;
 
 public slots:
   void updateExportActions();
@@ -161,69 +261,79 @@ public slots:
   void handleFileDrop(const QUrl& url);
 
 private slots:
-  void actionOpen();
-  void actionNewWindow();
-  void actionOpenWindow();
+  void on_fileActionOpen_triggered();
+  void on_fileActionNewWindow_triggered();
+  void on_fileActionOpenWindow_triggered();
   void actionOpenRecent();
   void actionOpenExample();
-  void clearRecentFiles();
-  void actionSave();
-  void actionSaveAs();
-  void actionRevokeTrustedFiles();
-  void actionSaveACopy();
-  void actionReload();
-  void actionShowLibraryFolder();
-  void convertTabsToSpaces();
-  void copyText();
+  void on_fileActionClearRecent_triggered();
+  void on_fileActionSave_triggered();
+  void on_fileActionSaveAs_triggered();
+  void on_fileActionPythonRevoke_triggered();
+  void on_fileActionPythonCreateVenv_triggered();
+  void on_fileActionPythonSelectVenv_triggered();
+  void on_fileActionSaveACopy_triggered();
+  void on_fileActionReload_triggered();
+  void on_fileShowLibraryFolder_triggered();
+  void on_editActionConvertTabsToSpaces_triggered();
+  void on_editActionCopy_triggered();
 
   void instantiateRoot();
   void compileDone(bool didchange);
   void compileEnded();
-  void changeParameterWidget();
+  void resetCompileMessageCounts();
+  void selectPreviewViewMode();
 
 private slots:
-  void copyViewportTranslation();
-  void copyViewportRotation();
-  void copyViewportDistance();
-  void copyViewportFov();
-  void preferences();
-  void hideEditorToolbar();
-  void hide3DViewToolbar();
+  void on_editActionCopyVPT_triggered();
+  void on_editActionCopyVPR_triggered();
+  void on_editActionCopyVPD_triggered();
+  void on_editActionCopyVPF_triggered();
+  void on_editActionPreferences_triggered();
+  void on_viewActionHideEditorToolBar_toggled(bool checked);
+  void on_viewActionHide3DViewToolBar_toggled(bool checked);
   void showLink(const QString&);
-  void showEditor();
-  void hideEditor();
-  void showConsole();
-  void hideConsole();
-  void showErrorLog();
-  void hideErrorLog();
-  void showViewportControl();
-  void hideViewportControl();
-  void showParameters();
-  void hideParameters();
-  void showAnimate();
-  void hideAnimate();
-  void on_windowActionSelectEditor_triggered();
-  void on_windowActionSelectConsole_triggered();
-  void on_windowActionSelectCustomizer_triggered();
-  void on_windowActionSelectErrorLog_triggered();
-  void on_windowActionSelectAnimate_triggered();
-  void on_windowActionSelectViewportControl_triggered();
-  void on_windowActionNextWindow_triggered();
-  void on_windowActionPreviousWindow_triggered();
+
+  // Handle the Next/Prev dock menu action when the is hovered, currently this activate the rubberband
+  void onWindowActionNextPrevHovered();
+
+  // Handle the Next/Prev dock menu action when the is validatee, currently switch to the targetted dock
+  // and remove the rubberband
+  void onWindowActionNextPrevTriggered();
+
+  // Handle the Next/Prev shortcut, currently switch to the targetted dock
+  // and adds the rubberband, the rubbreband is removed on shortcut key release.
+  void onWindowShortcutNextPrevActivated();
+  void onWindowShortcutExport3DActivated();
+
+  void onEditorDockVisibilityChanged(bool isVisible);
+  void onConsoleDockVisibilityChanged(bool isVisible);
+  void onErrorLogDockVisibilityChanged(bool isVisible);
+  void onAnimateDockVisibilityChanged(bool isVisible);
+  void onFontListDockVisibilityChanged(bool isVisible);
+  void onColorListDockVisibilityChanged(bool isVisible);
+  void onViewportControlDockVisibilityChanged(bool isVisible);
+  void onParametersDockVisibilityChanged(bool isVisible);
+
+  void onAIDockVisibilityChanged(bool isVisible);
+  void onExperimentalChanged();
+
+  void onColorListColorSelected(const QString&);
+
   void on_editActionInsertTemplate_triggered();
   void on_editActionFoldAll_triggered();
 
 public slots:
   void hideFind();
-  void showFind();
-  void showFindAndReplace();
+  void on_editActionFind_triggered();
+  void on_editActionFindAndReplace_triggered();
 
 private slots:
-  void selectFindType(int);
+  void actionSelectFind(int);
   void findString(const QString&);
-  void findNext();
-  void findPrev();
-  void useSelectionForFind();
+  void on_editActionFindNext_triggered();
+  void on_editActionFindPrevious_triggered();
+  void on_editActionUseSelectionForFind_triggered();
   void replace();
   void replaceAll();
 
@@ -231,48 +341,42 @@ private slots:
   void findBufferChanged();
   void updateFindBuffer(const QString&);
   bool event(QEvent *event) override;
+
 protected:
   bool eventFilter(QObject *obj, QEvent *event) override;
 
 public slots:
   void actionRenderPreview();
+  void on_designActionPreview_triggered();
 private slots:
   void csgRender();
   void csgReloadRender();
-  void action3DPrint();
-  void sendToOctoPrint();
-  void sendToPrintService();
-  void actionRender();
+  void on_designAction3DPrint_triggered();
+  void sendToExternalTool(class ExternalToolInterface& externalToolService);
+  void on_designActionRender_triggered();
   void actionRenderDone(const std::shared_ptr<const Geometry>&);
   void cgalRender();
-  void actionMeasureDistance();
-  void actionMeasureAngle();
-  void actionCheckValidity();
-  void actionDisplayAST();
-  void actionDisplayCSGTree();
-  void actionDisplayCSGProducts();
+  void handleMeasurementClicked(QAction *clickedAction);
+  void on_designCheckValidity_triggered();
+  void on_designActionDisplayAST_triggered();
+  void on_designActionDisplayCSGTree_triggered();
+  void on_designActionDisplayCSGProducts_triggered();
   bool canExport(unsigned int dim);
-  void actionExport(FileFormat format, const char *type_name, const char *suffix, unsigned int dim);
-  void actionExport(FileFormat format, const char *type_name, const char *suffix, unsigned int dim, ExportPdfOptions *options);
-  void actionExportSTL();
-  void actionExport3MF();
-  void actionExportOBJ();
-  void actionExportOFF();
-  void actionExportWRL();
-  void actionExportAMF();
-  void actionExportDXF();
-  void actionExportSVG();
-  void actionExportPDF();
-  void actionExportCSG();
-  void actionExportImage();
-  void actionCopyViewport();
-  void actionFlushCaches();
+  void actionExport(unsigned int dim, ExportInfo& exportInfo);
+  void actionExportFileFormat(int fmt);
+  void on_editActionCopyViewport_triggered();
+  void on_designActionFlushCaches_triggered();
 
 public:
   void viewModeActionsUncheck();
   void setCurrentOutput();
   void clearCurrentOutput();
   void hideCurrentOutput();
+  auto scopedSetCurrentOutput()
+  {
+    setCurrentOutput();
+    return sg::make_scope_guard([this] { clearCurrentOutput(); });
+  }
   bool isEmpty();
 
   void onAxisChanged(InputEventAxisChanged *event) override;
@@ -284,74 +388,58 @@ public:
   void onActionEvent(InputEventAction *event) override;
   void onZoomEvent(InputEventZoom *event) override;
 
-  void changedTopLevelConsole(bool);
-  void changedTopLevelEditor(bool);
-  void changedTopLevelErrorLog(bool);
-  void changedTopLevelAnimate(bool);
-  void changedTopLevelViewportControl(bool);
-
   QList<double> getTranslation() const;
   QList<double> getRotation() const;
+  std::unordered_map<FileFormat, QAction *> exportMap;
 
 public slots:
   void actionReloadRenderPreview();
-  void on_editorDock_visibilityChanged(bool);
-  void on_consoleDock_visibilityChanged(bool);
-  void on_parameterDock_visibilityChanged(bool);
-  void on_errorLogDock_visibilityChanged(bool);
-  void on_animateDock_visibilityChanged(bool);
-  void on_viewportControlDock_visibilityChanged(bool);
+  void on_designActionReloadAndPreview_triggered();
   void on_toolButtonCompileResultClose_clicked();
-  void editorTopLevelChanged(bool);
-  void consoleTopLevelChanged(bool);
-  void parameterTopLevelChanged(bool);
-  void errorLogTopLevelChanged(bool);
-  void animateTopLevelChanged(bool);
-  void viewportControlTopLevelChanged(bool);
   void processEvents();
   void jumpToLine(int, int);
   void openFileFromPath(const QString&, int);
 
+  void viewModeRender();
 #ifdef ENABLE_OPENCSG
   void viewModePreview();
+  void on_viewActionPreview_triggered();
 #endif
-  void viewModeSurface();
-  void viewModeWireframe();
   void viewModeThrownTogether();
-  void viewModeShowEdges();
-  void viewModeShowAxes();
-  void viewModeShowCrosshairs();
-  void viewModeShowScaleProportional();
-  void viewAngleTop();
-  void viewAngleBottom();
-  void viewAngleLeft();
-  void viewAngleRight();
-  void viewAngleFront();
-  void viewAngleBack();
-  void viewAngleDiagonal();
-  void viewCenter();
-  void viewPerspective();
-  void viewOrthogonal();
+  void on_viewActionThrownTogether_triggered();
+  void updateViewModeAfterGLInit();
+  void on_viewActionShowEdges_toggled(bool checked);
+  void on_viewActionShowAxes_toggled(bool checked);
+  void on_viewActionShowScaleProportional_toggled(bool checked);
+  void on_viewActionShowCrosshairs_toggled(bool checked);
+  void on_viewActionTop_triggered();
+  void on_viewActionBottom_triggered();
+  void on_viewActionLeft_triggered();
+  void on_viewActionRight_triggered();
+  void on_viewActionFront_triggered();
+  void on_viewActionBack_triggered();
+  void on_viewActionDiagonal_triggered();
+  void on_viewActionCenter_triggered();
+  void on_viewActionPerspective_toggled(bool checked);
+  void on_viewActionOrthogonal_toggled(bool checked);
   void viewTogglePerspective();
-  void viewResetView();
-  void viewAll();
+  void on_viewActionResetView_triggered();
+  void on_viewActionViewAll_triggered();
   void editorContentChanged();
   void leftClick(QPoint coordinate);
   void rightClick(QPoint coordinate);
   void dragEnterEvent(QDragEnterEvent *event) override;
   void dropEvent(QDropEvent *event) override;
-  void helpAbout();
-  void helpHomepage();
-  void helpManual();
-  void helpOfflineManual();
-  void helpCheatSheet();
-  void helpOfflineCheatSheet();
-  void helpLibrary();
-  void helpFontInfo();
-  void quit();
+  void on_helpActionAbout_triggered();
+  void on_helpActionHomepage_triggered();
+  void on_helpActionManual_triggered();
+  void on_helpActionOfflineManual_triggered();
+  void on_helpActionCheatSheet_triggered();
+  void on_helpActionOfflineCheatSheet_triggered();
+  void on_helpActionLibraryInfo_triggered();
   void checkAutoReload();
   void waitAfterReload();
-  void autoReloadSet(bool);
+  void on_designActionAutoReload_toggled(bool);
 
 private:
   bool network_progress_func(const double permille);
@@ -360,54 +448,65 @@ private:
   static bool reorderMode;
   static const int tabStopWidth;
   static QElapsedTimer *progressThrottle;
-  QWidget *lastFocus; // keep track of active copyable widget (Editor|Console) for global menu action Edit->Copy
+  QWidget *lastFocus;  // keep track of active copyable widget (Editor|Console) for global menu action
+                       // Edit->Copy
 
-  std::shared_ptr<CSGNode> csgRoot; // Result of the CSGTreeEvaluator
-  std::shared_ptr<CSGNode> normalizedRoot; // Normalized CSG tree
-  std::shared_ptr<CSGProducts> root_products;
-  std::shared_ptr<CSGProducts> highlights_products;
-  std::shared_ptr<CSGProducts> background_products;
+  std::shared_ptr<CSGNode> csgRoot;         // Result of the CSGTreeEvaluator
+  std::shared_ptr<CSGNode> normalizedRoot;  // Normalized CSG tree
+  std::shared_ptr<CSGProducts> rootProduct;
+  std::shared_ptr<CSGProducts> highlightsProducts;
+  std::shared_ptr<CSGProducts> backgroundProducts;
+  int currentlySelectedObject{-1};
 
   char const *afterCompileSlot;
   bool procevents{false};
-  QTemporaryFile *tempFile{nullptr};
   ProgressWidget *progresswidget{nullptr};
-  CGALWorker *cgalworker;
+  GeometryWorker *geometryWorker;
   QMutex consolemutex;
-  EditorInterface *renderedEditor; // stores pointer to editor which has been most recently rendered
-  time_t includes_mtime{0}; // latest include mod time
-  time_t deps_mtime{0}; // latest dependency mod time
-  std::unordered_map<std::string, QString> export_paths; // for each file type, where it was exported to last
-  QString exportPath(const char *suffix); // look up the last export path and generate one if not found
-  int last_parser_error_pos{-1}; // last highlighted error position
+  EditorInterface *renderedEditor;  // stores pointer to editor which has been most recently rendered
+  time_t includesMTime{0};          // latest include mod time
+  time_t depsMTime{0};              // latest dependency mod time
+  std::unordered_map<QString, QString> exportPaths;  // for each file type, where it was exported to last
+  // look up the last export path and generate one if not found
+  QString exportPath(const QString& suffix, const QString& basename = "");
+  int lastParserErrorPos{-1};  // last highlighted error position
   int tabCount = 0;
-  paperSizes sizeString2Enum(QString current);
-  paperOrientations orientationsString2Enum(QString current);
+  ExportPdfPaperSize sizeString2Enum(const QString& current);
+  ExportPdfPaperOrientation orientationsString2Enum(const QString& current);
 
+  QMenu *navigationMenu{nullptr};
   QSoundEffect *renderCompleteSoundEffect;
+
+  void resetMeasurementsState(bool enable, const QString& tooltipMessage);
+  QActionGroup *measurementGroup;
+  QAction *activeMeasurement = nullptr;
+
+  QActionGroup *viewActionProjectionGroup;
+  QActionGroup *previewModeGroup;
 
 signals:
   void highlightError(int);
   void unhighlightLastError();
+
+#ifdef ENABLE_GUI_TESTS
+public:
+  std::shared_ptr<AbstractNode> instantiateRootFromSource(SourceFile *file);
+signals:
+  // This is a new signal introduced while drafting the testing framework, while in experimental mode
+  // we protected it using the #ifdef/endif so it should not be considered as part of the MainWindow API.
+  void compilationDone(SourceFile *);
+#endif  //
 };
 
 class GuiLocker
 {
 public:
-  GuiLocker() {
-    GuiLocker::lock();
-  }
-  ~GuiLocker() {
-    GuiLocker::unlock();
-  }
-  static bool isLocked() { return gui_locked > 0; }
-  static void lock() {
-    gui_locked++;
-  }
-  static void unlock() {
-    gui_locked--;
-  }
+  GuiLocker() { GuiLocker::lock(); }
+  ~GuiLocker() { GuiLocker::unlock(); }
+  static bool isLocked() { return guiLocked > 0; }
+  static void lock() { guiLocked++; }
+  static void unlock() { guiLocked--; }
 
 private:
-  static unsigned int gui_locked;
+  static unsigned int guiLocked;
 };

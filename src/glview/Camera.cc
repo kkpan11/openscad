@@ -1,10 +1,22 @@
-#include "Camera.h"
-#include "RenderSettings.h"
-#include "printutils.h"
-#include "degree_trig.h"
+#include "glview/Camera.h"
+#include "geometry/linalg.h"
+#include "glview/RenderSettings.h"
+#include "utils/printutils.h"
+#include "utils/degree_trig.h"
 
-static const double DEFAULT_DISTANCE = 140.0;
-static const double DEFAULT_FOV = 22.5;
+#include <cmath>
+#include <cassert>
+#include <memory>
+#include <vector>
+
+namespace {
+
+constexpr double DEFAULT_DISTANCE = 140.0;
+constexpr double DEFAULT_FOV = 22.5;
+constexpr int DEFAULT_WIDTH = 512;
+constexpr int DEFAULT_HEIGHT = 512;
+
+}  // namespace
 
 Camera::Camera() : fov(DEFAULT_FOV)
 {
@@ -13,8 +25,8 @@ Camera::Camera() : fov(DEFAULT_FOV)
   // gimbal cam values
   resetView();
 
-  pixel_width = RenderSettings::inst()->img_width;
-  pixel_height = RenderSettings::inst()->img_height;
+  pixel_width = DEFAULT_WIDTH;
+  pixel_height = DEFAULT_HEIGHT;
   locked = false;
 }
 
@@ -30,9 +42,7 @@ void Camera::setup(std::vector<double> params)
     object_trans = -center;
     auto dir = center - eye;
     viewer_distance = dir.norm();
-    object_rot.z() = (!dir[1] && !dir[0]) ? dir[2] < 0 ? 0
-                                           : 180
-                              : -atan2_degrees(dir[1], dir[0]) + 90;
+    object_rot.z() = (!dir[1] && !dir[0]) ? dir[2] < 0 ? 0 : 180 : -atan2_degrees(dir[1], dir[0]) + 90;
     object_rot.y() = 0;
     Eigen::Vector3d projection(dir[0], dir[1], 0);
     object_rot.x() = -atan2_degrees(dir[2], projection.norm());
@@ -50,7 +60,6 @@ void Camera::viewAll(const BoundingBox& bbox)
     setVpt(0, 0, 0);
     setVpd(DEFAULT_DISTANCE);
   } else {
-
     if (this->autocenter) {
       // autocenter = point camera at the center of the bounding box.
       this->object_trans = -bbox.center();
@@ -80,7 +89,7 @@ void Camera::setProjection(ProjectionType type)
 
 void Camera::resetView()
 {
-  setVpr(55, 0, 25); // set in user space units
+  setVpr(55, 0, 25);  // set in user space units
   setVpt(0, 0, 0);
   setVpd(DEFAULT_DISTANCE);
   setVpf(DEFAULT_FOV);
@@ -103,7 +112,8 @@ void Camera::updateView(const std::shared_ptr<const FileContext>& context, bool 
       setVpr(x, y, z);
       noauto = true;
     } else {
-      LOG(message_group::Warning, "Unable to convert $vpr=%1$s to a vec3 or vec2 of numbers", vpr->toEchoString());
+      LOG(message_group::Warning, "Unable to convert $vpr=%1$s to a vec3 or vec2 of numbers",
+          vpr->toEchoString());
     }
   }
 
@@ -113,7 +123,8 @@ void Camera::updateView(const std::shared_ptr<const FileContext>& context, bool 
       setVpt(x, y, z);
       noauto = true;
     } else {
-      LOG(message_group::Warning, "Unable to convert $vpt=%1$s to a vec3 or vec2 of numbers", vpt->toEchoString());
+      LOG(message_group::Warning, "Unable to convert $vpt=%1$s to a vec3 or vec2 of numbers",
+          vpt->toEchoString());
     }
   }
 
@@ -156,7 +167,7 @@ void Camera::setVpt(double x, double y, double z)
 
 static double wrap(double angle)
 {
-  return fmod(360.0 + angle, 360.0); // force angle to be 0-360
+  return fmod(360.0 + angle, 360.0);  // force angle to be 0-360
 }
 
 Eigen::Vector3d Camera::getVpr() const
@@ -193,9 +204,9 @@ std::string Camera::statusText() const
 {
   const auto vpt = getVpt();
   const auto vpr = getVpr();
-  boost::format fmt(_("Viewport: translate = [ %.2f %.2f %.2f ], rotate = [ %.2f %.2f %.2f ], distance = %.2f, fov = %.2f"));
-  fmt % vpt.x() % vpt.y() % vpt.z()
-  % vpr.x() % vpr.y() % vpr.z()
-  % viewer_distance % fov;
+  boost::format fmt(
+    _("Viewport: translate = [ %.2f %.2f %.2f ], rotate = [ %.2f %.2f %.2f ], distance = %.2f, fov = "
+      "%.2f"));
+  fmt % vpt.x() % vpt.y() % vpt.z() % vpr.x() % vpr.y() % vpr.z() % viewer_distance % fov;
   return fmt.str();
 }

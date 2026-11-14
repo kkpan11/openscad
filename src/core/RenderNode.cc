@@ -24,18 +24,21 @@
  *
  */
 
-#include "RenderNode.h"
-#include "module.h"
-#include "ModuleInstantiation.h"
-#include "Builtins.h"
-#include "Children.h"
-#include "Parameters.h"
+#include "core/RenderNode.h"
 
-#include <sstream>
 #include <boost/assign/std/vector.hpp>
-using namespace boost::assign; // bring 'operator+=()' into scope
+#include <memory>
+#include <utility>
 
-static std::shared_ptr<AbstractNode> builtin_render(const ModuleInstantiation *inst, Arguments arguments, const Children& children)
+#include "core/Builtins.h"
+#include "core/Children.h"
+#include "core/ModuleInstantiation.h"
+#include "core/Parameters.h"
+#include "core/module.h"
+using namespace boost::assign;  // bring 'operator+=()' into scope
+
+static std::shared_ptr<AbstractNode> builtin_render(const ModuleInstantiation *inst, Arguments arguments,
+                                                    const Children& children)
 {
   auto node = std::make_shared<RenderNode>(inst);
 
@@ -55,7 +58,7 @@ std::string RenderNode::toString() const
 void register_builtin_render()
 {
   Builtins::init("render", new BuiltinModule(builtin_render),
-  {
-    "render(convexity = 1)",
-  });
+                 {
+                   "render(convexity = 1)",
+                 });
 }

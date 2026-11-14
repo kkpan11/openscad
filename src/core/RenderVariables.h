@@ -1,6 +1,7 @@
-#include "Camera.h"
-#include "Context.h"
-#include "BuiltinContext.h"
+#include "glview/Camera.h"
+class BuiltinContext;
+template <typename T>
+class ContextHandle;
 
 class RenderVariables
 {

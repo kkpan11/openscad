@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # This script builds all library dependencies of OpenSCAD for Mac OS X.
 # The libraries will be build in 64-bit mode and backwards compatible
@@ -15,7 +15,9 @@
 #  -x         Build x86_64 binaries
 #  -v         Verbose
 #
-# Prerequisites: automake, libtool, cmake, pkg-config, wget, meson
+# Prerequisites: automake, libtool, cmake, pkg-config, wget, meson, python-packaging
+#
+# python-packaging is required by glib.
 #
 
 set -e
@@ -28,43 +30,91 @@ BASEDIR=$PWD/../libraries
 OPENSCADDIR=$PWD
 SRCDIR=$BASEDIR/src
 DEPLOYDIR=$BASEDIR/install
-MAC_OSX_VERSION_MIN=10.13
+MAC_OSX_VERSION_MIN=12.0
 OPTION_DEPLOY=false
 OPTION_FORCE=0
 OPTION_ARM64=false
 OPTION_X86_64=false
 
 PACKAGES=(
-    "double_conversion 3.2.1"
-    "boost 1.81.0"
-    "eigen 3.4.0"
-    "gmp 6.2.1 patch"
-    "mpfr 4.2.0"
-    "glew 2.2.0"
-    "gettext 0.21.1"
-    "libffi REMOVE"
-    "freetype 2.12.1"
-    "ragel REMOVE"
-    "harfbuzz 6.0.0"
+    # https://github.com/google/double-conversion/releases
+    "double_conversion 3.4.0"
 
-    "libzip 1.9.2"
-    "libxml2 REMOVE"
-    "libuuid REMOVE"
-    "fontconfig 2.14.1"
-    "hidapi 0.12.0"
-    "lib3mf 2.3.1"
-    # FIXME: Re-evaluate patches if bumping glib past 2.76.3
-    "glib2 2.76.3"
-    "pixman 0.42.2"
-    "cairo 1.18.0"
-    "cgal 5.5"
-    "qt5 5.15.7 patch"
-    "opencsg 1.6.0"
-    "qscintilla 2.13.3"
-    "onetbb 2021.11.0"
+    # https://www.boost.org/releases/latest/
+    "boost 1.92.0 1"
+
+    # https://gitlab.com/libeigen/eigen/-/releases
+    "eigen 5.0.1"
+
+    # https://gmplib.org/#STATUS
+    "gmp 6.3.0"
+
+    # https://www.mpfr.org/mpfr-current/
+    "mpfr 4.2.2"
+
+    # https://savannah.gnu.org/news/?group=gettext
+    "gettext 1.0"
+
+    # https://freetype.org/index.html#news
+    "freetype 2.15.0"
+
+    # https://github.com/silnrsi/graphite/releases
+    "libgraphite2 1.3.15"
+
+    # https://github.com/harfbuzz/harfbuzz/releases
+    "harfbuzz 15.0.0"
+
+    # https://github.com/openssl/openssl/releases
+    "openssl 3.6.5"
+
+    # https://github.com/nih-at/libzip/releases
+    "libzip 1.12.1"
+
+    # https://www.freedesktop.org/wiki/Software/fontconfig/
+    "fontconfig 2.18.3"
+
+    # https://github.com/libusb/hidapi/releases
+    "hidapi 0.15.0"
+
+    # https://github.com/3MFConsortium/lib3mf/releases
+    "lib3mf 2.5.0"
+
+    # https://github.com/PCRE2Project/pcre2/releases
+    "pcre2 10.49"
+
+    # https://gitlab.gnome.org/GNOME/glib/-/releases
+    "glib2 2.90.1"
+
+    # https://gitlab.freedesktop.org/pixman/pixman/-/tags
+    "pixman 0.46.4 1"
+
+    # https://www.cairographics.org/news/ 
+    "cairo 1.18.6"
+
+    # https://github.com/CGAL/cgal/releases
+    "cgal 6.2.1"
+
+    # https://download.qt.io/archive/qt/6.8/
+    "qt6 6.8.5"
+
+    # https://opencsg.org/news.html
+    "opencsg 1.8.2"
+
+    # https://riverbankcomputing.com/software/qscintilla/download
+    "qscintilla 2.14.1 2"
+
+    # https://github.com/uxlfoundation/oneTBB/releases
+    "onetbb 2023.2.0"
+
+    # https://github.com/PolyClipping/Clipper2/releases
+    "clipper2 2.0.1"
+
+    # https://github.com/elalish/manifold/releases
+    "manifold 3.5.4 1"
 )
 DEPLOY_PACKAGES=(
-    "sparkle 1.27.1"
+    # https://github.com/sparkle-project/Sparkle/releases
+    "sparkle 2.10.1"
 )
 
 printUsage()
@@ -184,67 +234,41 @@ build_double_conversion()
   fi
   tar xzf "double-conversion-$version.tar.gz"
   cd "double-conversion-$version"
-  cmake -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED" .
+  # TODO: CMAKE_POLICY_VERSION_MINIMUM is fixed upstream post-version 3.3.1
+  cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.15 -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED" .
   make -j$NUMCPU
   make install
 }
 
-build_qt5()
+build_qt6()
 {
   version=$1
   cd $BASEDIR/src
   v=(${version//./ }) # Split into array
   rm -rf qt-everywhere-src-$version
   if [ ! -f qt-everywhere-opensource-src-$version.tar.xz ]; then
-    curl -LO --insecure https://download.qt.io/official_releases/qt/${v[0]}.${v[1]}/$version/single/qt-everywhere-opensource-src-$version.tar.xz
+    curl -LO --insecure https://download.qt.io/archive/qt/${v[0]}.${v[1]}/$version/single/qt-everywhere-opensource-src-$version.tar.xz
   fi
-  tar xzf qt-everywhere-opensource-src-$version.tar.xz
+  tar xjf qt-everywhere-opensource-src-$version.tar.xz
   cd qt-everywhere-src-$version
-  patch -p1 < $OPENSCADDIR/patches/qt5/qt-5.15-macos-CGColorSpace.patch
 
-  # Build each arch separately
-  for arch in ${ARCHS[*]}; do
-    mkdir build-$arch
-    cd build-$arch
-    ../configure -prefix $DEPLOYDIR -release -opensource -confirm-license \
-		-nomake examples -nomake tests \
-		-no-xcb -no-glib -no-harfbuzz -no-cups \
-		-skip qt3d -skip qtactiveqt -skip qtandroidextras -skip qtcharts -skip qtconnectivity -skip qtdatavis3d \
-		-skip qtdeclarative -skip qtdoc -skip qtgraphicaleffects -skip qtimageformats -skip qtlocation -skip qtlottie \
-		-skip qtnetworkauth -skip qtpurchasing -skip qtquick3d -skip qtquickcontrols \
-		-skip qtquickcontrols2 -skip qtquicktimeline -skip qtremoteobjects -skip qtscript -skip qtscxml -skip qtsensors \
-		-skip qtserialbus -skip qtserialport -skip qtspeech -skip qttranslations -skip qtvirtualkeyboard \
-		-skip qtwayland -skip qtwebchannel -skip qtwebengine -skip qtwebglplugin -skip qtwebsockets -skip qtwebview \
-		-skip qtwinextras -skip qtx11extras -skip qtxmlpatterns \
-		-no-feature-assistant -no-feature-designer -no-feature-distancefieldgenerator -no-feature-kmap2qmap \
-		-no-feature-linguist -no-feature-makeqpf -no-feature-qev -no-feature-qtattributionsscanner \
-		-no-feature-qtdiag -no-feature-qtpaths -no-feature-qtplugininfo \
-		-no-feature-openal -no-feature-avfoundation -no-feature-gstreamer -no-feature-qdoc \
-		-device-option QMAKE_APPLE_DEVICE_ARCHS=$arch
-    make -j"$NUMCPU"
-    make -j"$NUMCPU" install INSTALL_ROOT=$PWD/install/
-    cd ..
-  done
+  patch -p1 < $OPENSCADDIR/patches/qt6/qyieldcpu.patch
+  patch -p1 < $OPENSCADDIR/patches/qt6/dup3.patch
+  patch -p1 < $OPENSCADDIR/patches/qt6/coreaudio-preserve-device-sample-rate.patch
 
-  # Install the first arch
-  cp -R build-${ARCHS[0]}/install/$DEPLOYDIR/* $DEPLOYDIR
-
-  # If we're building for multiple archs, create fat binaries
-  if (( ${#ARCHS[@]} > 1 )); then
-    frameworks="QtConcurrent QtCore QtDBus QtGamepad QtGui QtMacExtras QtMultimedia QtMultimediaWidgets QtNetwork QtOpenGL QtPrintSupport QtSql QtSvg QtTest QtWidgets QtXml"
-    for framework in $frameworks; do
-	LIBS=()
-	for arch in ${ARCHS[*]}; do
-	    LIBS+=(build-$arch/install/$DEPLOYDIR/lib/$framework.framework/Versions/Current/$framework)
-	done
-	lipo -create ${LIBS[@]} -output $DEPLOYDIR/lib/$framework.framework/Versions/Current/$framework
-    done
-    # We also need to merge plugins into universal binaries
-    for plugin in $(find $DEPLOYDIR/plugins -name "*.dylib"); do
-	libname=$(basename $plugin)
-	lipo -create $(find build-*/install -name $libname) -output $plugin
-    done
-  fi
+  mkdir build
+  cd build
+  ../configure -prefix $DEPLOYDIR -release -opensource -confirm-license -nomake tests -nomake examples \
+    -submodules qtbase,qt5compat,qtmultimedia,qtsvg -skip qtquick3d,qtquicktimeline,qtdeclarative \
+    -no-feature-sql -no-feature-glib \
+		-no-feature-linguist -no-feature-designer -no-feature-pixeltool -no-feature-assistant \
+    -no-feature-distancefieldgenerator -no-feature-qtattributionsscanner -no-feature-qtplugininfo \
+    -no-feature-qtdiag \
+    -- -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED_REV"
+  ninja
+  # Clean up any previous Qt installation before installing
+  rm -rf "$DEPLOYDIR"/lib/Qt*.framework "$DEPLOYDIR"/include/Qt* "$DEPLOYDIR"/lib/cmake/Qt6*
+  ninja install
 }
 
 build_qscintilla()
@@ -257,11 +281,13 @@ build_qscintilla()
       curl -LO https://www.riverbankcomputing.com/static/Downloads/QScintilla/$version/"${QSCINTILLA_FILENAME}"
   fi
   tar xzf "${QSCINTILLA_FILENAME}"
-  cd QScintilla*/src
+  cd QScintilla_src-$version
+  patch -p1 < $OPENSCADDIR/patches/qscintilla-$version-a11y-textrange-crash.patch
+  cd src
   qmake qscintilla.pro QMAKE_APPLE_DEVICE_ARCHS="${ARCHS[*]}"
   make -j"$NUMCPU" install
-  install_name_tool -id @rpath/libqscintilla2_qt5.dylib $DEPLOYDIR/lib/libqscintilla2_qt5.dylib
 }
+
 
 build_gmp()
 {
@@ -274,13 +300,12 @@ build_gmp()
   fi
   tar xjf gmp-$version.tar.bz2
   cd gmp-$version
-  patch -p1 < $OPENSCADDIR/patches/gmp-macos-x18.patch
 
   # Build each arch separately
   for arch in ${ARCHS[*]}; do
     mkdir build-$arch
     cd build-$arch
-    ../configure --prefix=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" --enable-cxx --build=$LOCAL_ARCH-apple-darwin --host=$arch-apple-darwin17.0.0
+    M4=gm4 ../configure --prefix=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" --enable-cxx --disable-static --build=$LOCAL_ARCH-apple-darwin --host=$arch-apple-darwin17.0.0
     make -j"$NUMCPU" install DESTDIR=$PWD/install/
     cd ..
   done
@@ -321,7 +346,7 @@ build_mpfr()
     arch=${ARCHS[$i]}
     mkdir build-$arch
     cd build-$arch
-    ../configure --prefix=$DEPLOYDIR --with-gmp=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" --build=$LOCAL_GNU_ARCH-apple-darwin --host=${GNU_ARCHS[$i]}-apple-darwin17.0.0
+    ../configure --prefix=$DEPLOYDIR --with-gmp=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" --disable-static --build=$LOCAL_GNU_ARCH-apple-darwin --host=${GNU_ARCHS[$i]}-apple-darwin17.0.0
     make -j"$NUMCPU" install DESTDIR=$PWD/install/
     cd ..
   done
@@ -358,8 +383,9 @@ build_boost()
     ARCH_FLAGS+=(-arch $arch)
   done
 
-  ./bootstrap.sh --prefix=$DEPLOYDIR --with-libraries=thread,program_options,filesystem,chrono,system,regex,date_time,atomic
-  ./b2 -j"$NUMCPU" -d+2 $BOOST_TOOLSET cflags="-mmacosx-version-min=$MAC_OSX_VERSION_MIN ${ARCH_FLAGS[*]}" linkflags="-mmacosx-version-min=$MAC_OSX_VERSION_MIN ${ARCH_FLAGS[*]} -headerpad_max_install_names" install
+  ./bootstrap.sh --prefix=$DEPLOYDIR --with-libraries=thread,program_options,chrono,system,regex,date_time,atomic
+  ./b2 headers
+  ./b2 -j"$NUMCPU" -d+2 $BOOST_TOOLSET link=shared cflags="-mmacosx-version-min=$MAC_OSX_VERSION_MIN ${ARCH_FLAGS[*]}" linkflags="-mmacosx-version-min=$MAC_OSX_VERSION_MIN ${ARCH_FLAGS[*]} -headerpad_max_install_names" install
 }
 
 build_cgal()
@@ -392,29 +418,10 @@ build_onetbb()
   fi
   tar xzf oneTBB-$version.tar.gz
   cd oneTBB-$version
-  cmake . -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DCMAKE_BUILD_TYPE=Release -DTBB_TEST=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED" -DBOOST_ROOT=$DEPLOYDIR -DBoost_USE_MULTITHREADED=false
+  mkdir build
+  cd build  
+  cmake .. -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DCMAKE_BUILD_TYPE=Release -DTBB_TEST=OFF -DTCM_BUILD=OFF -DTBB_DISABLE_HWLOC_AUTOMATIC_SEARCH=ON -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED"
   make -j"$NUMCPU" install
-  make install  
-  # install_name_tool -id @rpath/libtbb.dylib $DEPLOYDIR/lib/libtbb.dylib
-  # install_name_tool -id @rpath/libtbbmalloc.dylib $DEPLOYDIR/lib/libtbbmalloc.dylib
-}
-
-build_glew()
-{
-  version=$1
-  cd $BASEDIR/src
-  rm -rf glew-$version
-  if [ ! -f glew-$version.tgz ]; then
-    curl -LO http://downloads.sourceforge.net/project/glew/glew/$version/glew-$version.tgz
-  fi
-  tar xzf glew-$version.tgz
-  cd glew-$version
-  mkdir -p $DEPLOYDIR/lib/pkgconfig
-  ARCH_FLAGS=()
-  for arch in ${ARCHS[*]}; do
-    ARCH_FLAGS+=(-arch $arch)
-  done
-  make GLEW_PREFIX=$DEPLOYDIR GLEW_DEST=$DEPLOYDIR CFLAGS.EXTRA="-no-cpp-precomp -dynamic -fno-common -mmacosx-version-min=$MAC_OSX_VERSION_MIN ${ARCH_FLAGS[*]}" LDFLAGS.EXTRA="-install_name @rpath/libGLEW.dylib -mmacosx-version-min=$MAC_OSX_VERSION_MIN ${ARCH_FLAGS[*]}" POPT="-Os" STRIP= install
 }
 
 build_opencsg()
@@ -427,8 +434,9 @@ build_opencsg()
   fi
   tar xzf OpenCSG-$version.tar.gz
   cd OpenCSG-$version
-  patch -p1 < $OPENSCADDIR/patches/OpenCSG-$version-MacOSX-port.patch
-  qmake -r INSTALLDIR=$DEPLOYDIR QMAKE_APPLE_DEVICE_ARCHS="${ARCHS[*]}"
+  mkdir build
+  cd build
+  cmake -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DBUILD_EXAMPLE=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED" ..
   make install
   install_name_tool -id @rpath/libopencsg.dylib $DEPLOYDIR/lib/libopencsg.dylib
 }
@@ -449,7 +457,7 @@ build_eigen()
   cd eigen-$version
   mkdir build
   cd build
-  cmake -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DEIGEN_TEST_NOQT=TRUE -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED" ..
+  cmake -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DCMAKE_Fortran_COMPILER=NOTFOUND -DEIGEN_TEST_NOQT=TRUE -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED" ..
   make -j"$NUMCPU" install
 }
 
@@ -518,7 +526,7 @@ build_freetype()
     arch=${ARCHS[$i]}
     mkdir build-$arch
     cd build-$arch
-    PKG_CONFIG_LIBDIR="$DEPLOYDIR/lib/pkgconfig" ../configure --prefix=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" --without-png --without-harfbuzz --host=${GNU_ARCHS[$i]}-apple-darwin17.0.0
+    PKG_CONFIG_LIBDIR="$DEPLOYDIR/lib/pkgconfig" ../configure --prefix=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" --without-png --without-harfbuzz --disable-static --host=${GNU_ARCHS[$i]}-apple-darwin17.0.0
     make -j"$NUMCPU" install DESTDIR=$PWD/install/
     cd ..
   done
@@ -536,6 +544,65 @@ build_freetype()
   fi
 
   install_name_tool -id @rpath/libfreetype.dylib $DEPLOYDIR/lib/libfreetype.dylib
+}
+
+build_openssl()
+{
+  version=$1
+  OPENSSL_DIR="openssl-$version"
+  OPENSSL_FILENAME="${OPENSSL_DIR}.tar.gz"
+
+  cd "$BASEDIR/src"
+  rm -rf "$OPENSSL_DIR"
+  if [ ! -f "$OPENSSL_FILENAME" ]; then
+    curl -LO "https://github.com/openssl/openssl/releases/download/openssl-$version/$OPENSSL_FILENAME"
+  fi
+  tar xzf "$OPENSSL_FILENAME"
+
+  for i in ${!ARCHS[@]}; do
+    arch=${ARCHS[$i]}
+    arch_build_dir="${OPENSSL_DIR}-${arch}"
+    rm -rf "$arch_build_dir"
+    cp -R "$OPENSSL_DIR" "$arch_build_dir"
+    cd "$arch_build_dir"
+
+    case "$arch" in
+      arm64) openssl_target="darwin64-arm64-cc" ;;
+      x86_64) openssl_target="darwin64-x86_64-cc" ;;
+      *) echo "Unsupported OpenSSL architecture: $arch" >&2; exit 1 ;;
+    esac
+
+    CFLAGS="-arch $arch -mmacosx-version-min=$MAC_OSX_VERSION_MIN" \
+    CXXFLAGS="-arch $arch -mmacosx-version-min=$MAC_OSX_VERSION_MIN" \
+    LDFLAGS="-arch $arch -mmacosx-version-min=$MAC_OSX_VERSION_MIN" \
+    ./Configure "$openssl_target" shared no-tests no-module \
+      --prefix="$DEPLOYDIR" \
+      --openssldir="$DEPLOYDIR/ssl"
+    make -j"$NUMCPU"
+    make install_sw DESTDIR="$PWD/install"
+    cd ..
+  done
+
+  cp -R "${OPENSSL_DIR}-${ARCHS[0]}/install/$DEPLOYDIR/"* "$DEPLOYDIR"
+
+  if (( ${#ARCHS[@]} > 1 )); then
+    SSL_DYLIBS=()
+    CRYPTO_DYLIBS=()
+    for arch in ${ARCHS[*]}; do
+      SSL_DYLIBS+=("${OPENSSL_DIR}-${arch}/install/$DEPLOYDIR/lib/libssl.3.dylib")
+      CRYPTO_DYLIBS+=("${OPENSSL_DIR}-${arch}/install/$DEPLOYDIR/lib/libcrypto.3.dylib")
+    done
+    lipo -create "${SSL_DYLIBS[@]}" -output "$DEPLOYDIR/lib/libssl.3.dylib"
+    lipo -create "${CRYPTO_DYLIBS[@]}" -output "$DEPLOYDIR/lib/libcrypto.3.dylib"
+  fi
+
+  rm -f "$DEPLOYDIR/lib/libssl.a" "$DEPLOYDIR/lib/libcrypto.a"
+
+  ln -sf libssl.3.dylib "$DEPLOYDIR/lib/libssl.dylib"
+  ln -sf libcrypto.3.dylib "$DEPLOYDIR/lib/libcrypto.dylib"
+  install_name_tool -id @rpath/libssl.3.dylib "$DEPLOYDIR/lib/libssl.3.dylib"
+  install_name_tool -id @rpath/libcrypto.3.dylib "$DEPLOYDIR/lib/libcrypto.3.dylib"
+  install_name_tool -change "$DEPLOYDIR/lib/libcrypto.3.dylib" @rpath/libcrypto.3.dylib "$DEPLOYDIR/lib/libssl.3.dylib"
 }
 
 build_libzip()
@@ -556,41 +623,24 @@ build_libzip()
   install_name_tool -id @rpath/libzip.dylib $DEPLOYDIR/lib/libzip.dylib
 }
 
-remove_libxml2()
-{
-  echo "Removing libxml2..."
-  find $DEPLOYDIR -name "*libxml*" -prune -exec rm -rf {} \;
-}
-
-remove_libuuid()
-{
-  echo "Removing libuuid..."
-  find $DEPLOYDIR -name "*libuuid*" -prune -exec rm -rf {} \;
-  rm -f $DEPLOYDIR/include/uuid.h $DEPLOYDIR/lib/pkgconfig/uuid.pc
-}
-
 build_fontconfig()
 {
   version=$1
   cd "$BASEDIR"/src
   rm -rf "fontconfig-$version"
   if [ ! -f "fontconfig-$version.tar.gz" ]; then
-    curl -LO "https://www.freedesktop.org/software/fontconfig/release/fontconfig-$version.tar.gz"
+    curl -LO "https://gitlab.freedesktop.org/fontconfig/fontconfig/-/archive/$version/fontconfig-$version.tar.gz"
   fi
   tar xzf "fontconfig-$version.tar.gz"
   cd "fontconfig-$version"
 #  patch -p1 < $OPENSCADDIR/patches/fontconfig-arm64.patch
 
   # Build each arch separately
-  for i in ${!ARCHS[@]}; do
-    arch=${ARCHS[$i]}
-    mkdir build-$arch
-    cd build-$arch
-    # FIXME: The "ac_cv_func_mkostemp=no" is a workaround for fontconfig's autotools config not respecting any passed
-    # -no_weak_imports linker flag. This may be improved in future versions of fontconfig
-    ../configure --prefix=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN -Wl,-rpath,$DEPLOYDIR/lib" --enable-libxml2  --host=${GNU_ARCHS[$i]}-apple-darwin17.0.0 ac_cv_func_mkostemp=no
-    make -j"$NUMCPU" install DESTDIR=$PWD/install/
-    cd ..
+  for arch in ${ARCHS[*]}; do
+    sed -e "s,@MAC_OSX_VERSION_MIN@,$MAC_OSX_VERSION_MIN,g" -e "s,@DEPLOYDIR@,$DEPLOYDIR,g" $OPENSCADDIR/scripts/macos-$arch.txt.in > macos-$arch.txt
+    meson setup --prefix $DEPLOYDIR --cross-file macos-$arch.txt -Dtests=disabled -Dnls=disabled build-$arch
+    meson compile -C build-$arch
+    DESTDIR=install/ meson install -C build-$arch
   done
 
   # Install the first arch
@@ -608,19 +658,13 @@ build_fontconfig()
   install_name_tool -id @rpath/libfontconfig.dylib $DEPLOYDIR/lib/libfontconfig.dylib
 }
 
-remove_libffi()
-{
-  echo "Removing libffi..."
-  find $DEPLOYDIR -type f -name "ffi*" -o -name "libffi*" -exec rm -f {} \;
-}
-
 build_gettext()
 {
   version="$1"
   cd "$BASEDIR"/src
   rm -rf "gettext-$version"
   if [ ! -f "gettext-$version.tar.gz" ]; then
-    curl --insecure -LO "http://ftpmirror.gnu.org/gettext/gettext-$version.tar.gz"
+    curl --insecure -LO "http://ftp.gnu.org/pub/gnu/gettext/gettext-$version.tar.gz"
   fi
   tar xzf "gettext-$version.tar.gz"
   cd "gettext-$version"
@@ -630,7 +674,10 @@ build_gettext()
     arch=${ARCHS[$i]}
     mkdir build-$arch
     cd build-$arch
-    ../configure --prefix=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" CXXFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN -Wl,-rpath,$DEPLOYDIR/lib" --disable-shared --with-included-glib --with-included-gettext --with-included-libunistring --disable-java --disable-csharp --host=${GNU_ARCHS[$i]}-apple-darwin17.0.0
+    # am_cv_func_iconv_works=yes is a workaround for issues with macOS iconv since macOS 14, see:
+    #   https://github.com/Homebrew/homebrew-core/pull/199639
+    #   https://lists.gnu.org/archive/html/bug-gnulib/2024-05/msg00375.html
+    am_cv_func_iconv_works=yes ../configure --prefix=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" CXXFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN -Wl,-rpath,$DEPLOYDIR/lib" --disable-shared --with-included-glib --with-included-gettext --with-included-libunistring --disable-java --disable-csharp --host=${GNU_ARCHS[$i]}-apple-darwin17.0.0
     make -j"$NUMCPU"
     make -j"$NUMCPU" install DESTDIR=$PWD/install/
     cd ..
@@ -649,6 +696,22 @@ build_gettext()
   fi
 }
 
+build_pcre2()
+{
+  version=$1
+  cd "$BASEDIR"/src
+  rm -rf "pcre2-$version"
+  if [ ! -f "pcre2-$version.tar.bz2" ]; then
+    curl -LO "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-$version/pcre2-$version.tar.bz2"
+  fi
+  tar xzf "pcre2-$version.tar.bz2"
+  cd "pcre2-$version"
+
+  cmake . -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DBUILD_SHARED_LIBS=ON -DBUILD_STATIC_LIBS=OFF -DPCRE2_BUILD_PCRE2GREP=OFF -DPCRE2_BUILD_TESTS=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED"
+  make -j"$NUMCPU" install
+  make install
+}
+
 build_glib2()
 {
   version="$1"
@@ -660,14 +723,11 @@ build_glib2()
   fi
   tar xJf "glib-$version.tar.xz"
   cd "glib-$version"
-  # FIXME: Once bumping past glib-2.76.3, we may not need these patches
-  patch -p1 < $OPENSCADDIR/patches/glib-iconv-macos.patch
-  patch -p1 < $OPENSCADDIR/patches/glib-pcre-macos.patch
 
   # Build each arch separately
   for arch in ${ARCHS[*]}; do
     sed -e "s,@MAC_OSX_VERSION_MIN@,$MAC_OSX_VERSION_MIN,g" -e "s,@DEPLOYDIR@,$DEPLOYDIR,g" $OPENSCADDIR/scripts/macos-$arch.txt.in > macos-$arch.txt
-    meson setup --prefix $DEPLOYDIR --cross-file macos-$arch.txt --force-fallback-for libpcre2-8 -Dgtk_doc=false -Dman=false -Ddtrace=false -Dtests=false build-$arch
+    meson setup --prefix $DEPLOYDIR --cross-file macos-$arch.txt -Ddocumentation=false -Dman-pages=disabled -Ddtrace=disabled -Dtests=false -Dintrospection=disabled -Dsysprof=disabled build-$arch
     meson compile -C build-$arch
     DESTDIR=install/ meson install -C build-$arch
   done
@@ -687,10 +747,19 @@ build_glib2()
   install_name_tool -id @rpath/libglib-2.0.dylib $DEPLOYDIR/lib/libglib-2.0.dylib
 }
 
-remove_ragel()
+build_libgraphite2()
 {
-  echo "Removing ragel..."
-  find $DEPLOYDIR -type f -name "ragel*" -exec rm -f {} \;
+  version=$1
+  cd $BASEDIR/src
+  rm -rf graphite-$version
+  if [ ! -f graphite-$version.tar.gz ]; then
+   curl -L https://github.com/silnrsi/graphite/archive/refs/tags/$version.tar.gz -o graphite-$version.tar.gz
+ fi
+ tar xzf graphite-$version.tar.gz
+  cd graphite-$version
+  cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_PREFIX_PATH=$DEPLOYDIR -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED" .
+  make -j"$NUMCPU" VERBOSE=1
+  make -j"$NUMCPU" install
 }
 
 build_harfbuzz()
@@ -705,13 +774,11 @@ build_harfbuzz()
   cd "harfbuzz-$version"
 
   # Build each arch separately
-  for i in ${!ARCHS[@]}; do
-    arch=${ARCHS[$i]}
-    mkdir build-$arch
-    cd build-$arch
-    PKG_CONFIG_LIBDIR="$DEPLOYDIR/lib/pkgconfig" ../configure --prefix=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" CXXFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" --with-freetype=yes --with-gobject=no --with-cairo=no --with-icu=no --with-coretext=auto --with-glib=no --disable-gtk-doc-html --host=${GNU_ARCHS[$i]}-apple-darwin17.0.0
-    make -j"$NUMCPU" install DESTDIR=$PWD/install/
-    cd ..
+  for arch in ${ARCHS[*]}; do
+    sed -e "s,@MAC_OSX_VERSION_MIN@,$MAC_OSX_VERSION_MIN,g" -e "s,@DEPLOYDIR@,$DEPLOYDIR,g" $OPENSCADDIR/scripts/macos-$arch.txt.in > macos-$arch.txt
+    meson setup --prefix $DEPLOYDIR --cross-file macos-$arch.txt build-$arch -Dfreetype=enabled -Dgraphite2=enabled -Dgobject=disabled -Dcairo=disabled -Dicu=disabled -Dcoretext=auto -Dglib=disabled -Dchafa=disabled -Dpng=disabled -Draster=disabled -Dvector=disabled -Dgpu=disabled -Dutilities=disabled -Dtests=disabled -Ddocs=disabled
+    meson compile -C build-$arch
+    DESTDIR=install/ meson install -C build-$arch
   done
 
   # Install the first arch
@@ -746,7 +813,7 @@ build_hidapi()
     arch=${ARCHS[$i]}
     mkdir build-$arch
     cd build-$arch
-    ../configure --prefix=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" --host=${GNU_ARCHS[$i]}-apple-darwin17.0.0
+    ../configure --prefix=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" --disable-static --host=${GNU_ARCHS[$i]}-apple-darwin17.0.0
     make -j"$NUMCPU" install DESTDIR=$PWD/install/
     cd ..
   done
@@ -770,14 +837,15 @@ build_lib3mf()
 {
   version=$1
   cd $BASEDIR/src
- rm -rf lib3mf-$version
- if [ ! -f $version.tar.gz ]; then
-   curl -L https://github.com/3MFConsortium/lib3mf/archive/v$version.tar.gz -o lib3mf-$version.tar.gz
- fi
- tar xzf lib3mf-$version.tar.gz
+  rm -rf lib3mf-$version
+  if [ ! -f lib3mf-$version.tar.gz ]; then
+    curl -L https://github.com/3MFConsortium/lib3mf/archive/v$version.tar.gz -o lib3mf-$version.tar.gz
+  fi
+  tar xzf lib3mf-$version.tar.gz
   cd lib3mf-$version
-  patch -p1 < $OPENSCADDIR/patches/lib3mf-macos.patch
-  cmake -DLIB3MF_TESTS=false -DCMAKE_PREFIX_PATH=$DEPLOYDIR -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DCMAKE_INSTALL_INCLUDEDIR=include/lib3mf -DUSE_INCLUDED_ZLIB=OFF -DUSE_INCLUDED_LIBZIP=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED" .
+  mkdir -p submodules/fast_float/include
+  ln -s ../../../Libraries/fast_float/Include submodules/fast_float/include/fast_float
+  cmake -DLIB3MF_TESTS=false -DCMAKE_PREFIX_PATH=$DEPLOYDIR -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DUSE_INCLUDED_ZLIB=OFF -DUSE_INCLUDED_LIBZIP=OFF -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED" .
   make -j"$NUMCPU" VERBOSE=1
   make -j"$NUMCPU" install
 }
@@ -797,16 +865,11 @@ build_pixman()
   cd "$PIXMAN_DIR"
 
   # Build each arch separately
-  for i in ${!ARCHS[@]}; do
-    arch=${ARCHS[$i]}
-    mkdir build-$arch
-    cd build-$arch
-    # libpng is only used for tests, disabling to kill linker warnings since we don't build libpng ourselves
-    # --disable-arm-a64-neon is due to https://gitlab.freedesktop.org/pixman/pixman/-/issues/59 and
-    #   https://gitlab.freedesktop.org/pixman/pixman/-/issues/69
-    ../configure --prefix=$DEPLOYDIR CFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" LDFLAGS="-arch $arch -mmacos-version-min=$MAC_OSX_VERSION_MIN" --disable-gtk --disable-libpng --disable-arm-a64-neon --host=${GNU_ARCHS[$i]}-apple-darwin17.0.0
-    make -j"$NUMCPU" install DESTDIR=$PWD/install/
-    cd ..
+  for arch in ${ARCHS[*]}; do
+    sed -e "s,@MAC_OSX_VERSION_MIN@,$MAC_OSX_VERSION_MIN,g" -e "s,@DEPLOYDIR@,$DEPLOYDIR,g" $OPENSCADDIR/scripts/macos-$arch.txt.in > macos-$arch.txt
+    meson setup --prefix $DEPLOYDIR --cross-file macos-$arch.txt build-$arch -Dlibpng=disabled -Dgtk=disabled -Dtests=disabled -Dneon=disabled -Ddemos=disabled
+    meson compile -C build-$arch
+    DESTDIR=install/ meson install -C build-$arch
   done
 
   # Install the first arch
@@ -838,13 +901,10 @@ build_cairo()
   tar xzf "${CAIRO_FILENAME}"
   cd "$CAIRO_DIR"
 
-  # FIXME: Cairo cannot disable lzo2, so we patch it
-  patch -p1 < $OPENSCADDIR/patches/cairo-lzo2-macos.patch
-
   # Build each arch separately
   for arch in ${ARCHS[*]}; do
     sed -e "s,@MAC_OSX_VERSION_MIN@,$MAC_OSX_VERSION_MIN,g" -e "s,@DEPLOYDIR@,$DEPLOYDIR,g" $OPENSCADDIR/scripts/macos-$arch.txt.in > macos-$arch.txt
-    meson setup --prefix $DEPLOYDIR --cross-file macos-$arch.txt -Dfreetype=enabled -Dfontconfig=enabled -Dxlib=disabled -Dxcb=disabled -Dpng=disabled -Dglib=disabled -Dtests=disabled -Dquartz=disabled build-$arch
+    meson setup --prefix $DEPLOYDIR --cross-file macos-$arch.txt -Dfreetype=enabled -Dfontconfig=enabled -Dxlib=disabled -Dxcb=disabled -Dpng=disabled -Dglib=disabled -Dlzo=disabled -Dspectre=disabled -Dsymbol-lookup=disabled -Dtests=disabled -Dquartz=disabled build-$arch
     meson compile -C build-$arch
     DESTDIR=install/ meson install -C build-$arch
   done
@@ -864,6 +924,41 @@ build_cairo()
   install_name_tool -id @rpath/libcairo.dylib $DEPLOYDIR/lib/libcairo.dylib
   install_name_tool -change @rpath/libpixman.dylib @rpath/libpixman-1.dylib $DEPLOYDIR/lib/libcairo.dylib
 }
+
+build_clipper2()
+{
+  cd $BASEDIR/src
+  rm -rf "Clipper2-Clipper2_$version"
+  if [ ! -f "Clipper2_$version.tar.gz" ]; then
+    curl -LO https://github.com/PolyClipping/Clipper2/archive/refs/tags/Clipper2_$version.tar.gz
+  fi
+  tar xzf "Clipper2_$version.tar.gz"
+  cd "Clipper2-Clipper2_$version"
+
+  mkdir build
+  cd build
+  cmake -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED" -DCLIPPER2_UTILS=OFF -DCLIPPER2_EXAMPLES=OFF -DCLIPPER2_TESTS=OFF -DBUILD_SHARED_LIBS=ON ../CPP
+  make -j$NUMCPU
+  make install
+}
+
+build_manifold()
+{
+  cd $BASEDIR/src
+  rm -rf "manifold-$version"
+  if [ ! -f "manifold-$version.tar.gz" ]; then
+    curl -LO https://github.com/elalish/manifold/releases/download/v$version/manifold-$version.tar.gz
+  fi
+  tar xzf "manifold-$version.tar.gz"
+  cd "manifold-$version"
+
+  mkdir build
+  cd build
+  cmake -DCMAKE_INSTALL_PREFIX=$DEPLOYDIR -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET="$MAC_OSX_VERSION_MIN" -DCMAKE_OSX_ARCHITECTURES="$ARCHS_COMBINED" -DMANIFOLD_CBIND=OFF -DMANIFOLD_TEST=OFF -DMANIFOLD_PAR=ON ..
+  make -j$NUMCPU
+  make install
+}
+
 
 if [ ! -f $OPENSCADDIR/openscad.appdata.xml.in ]; then
   echo "Must be run from the OpenSCAD source root directory"
@@ -891,12 +986,18 @@ OPTION_PACKAGES="${@:$OPTIND}"
 
 OSX_MAJOR_VERSION=`sw_vers -productVersion | cut -d. -f1`
 OSX_VERSION=`sw_vers -productVersion | cut -d. -f2`
-if (( $OSX_MAJOR_VERSION >= 14 )); then
+if (( $OSX_MAJOR_VERSION >= 26 )); then
+  echo "Detected Tahoe (26.x) or later"
+elif (( $OSX_MAJOR_VERSION >= 15 )); then
+  echo "Detected Sequoia (15.x) or later"
+elif (( $OSX_MAJOR_VERSION >= 14 )); then
   echo "Detected Sonoma (14.x) or later"
 elif (( $OSX_MAJOR_VERSION >= 13 )); then
   echo "Detected Ventura (13.x) or later"
+elif (( $OSX_MAJOR_VERSION >= 12 )); then
+  echo "Detected Monterey (12.x) or later"
 elif (( $OSX_MAJOR_VERSION >= 11 )); then
-  echo "Detected BigSur (11.x) or later"
+  echo "Detected Big Sur (11.x) or later"
 elif (( $OSX_VERSION >= 15 )); then
   echo "Detected Catalina (10.15) or later"
 elif (( $OSX_VERSION >= 14 )); then
@@ -930,22 +1031,28 @@ fi
 ARCHS=()
 GNU_ARCHS=()
 if $OPTION_ARM64 || $OPTION_X86_64; then
-    if $OPTION_X86_64; then
-	ARCHS+=(x86_64)
-	GNU_ARCHS+=(x86_64)
-    fi
-    if $OPTION_ARM64; then
-	ARCHS+=(arm64)
-	GNU_ARCHS+=(aarch64)
-    fi
+  if $OPTION_ARM64; then
+    ARCHS+=(arm64)
+    GNU_ARCHS+=(aarch64)
+  fi
+  if $OPTION_X86_64; then
+    ARCHS+=(x86_64)
+	  GNU_ARCHS+=(x86_64)
+  fi
 else
     ARCHS+=($LOCAL_ARCH)
     GNU_ARCHS+=($LOCAL_GNU_ARCH)
 fi
 ARCHS_COMBINED=$(IFS=\; ; echo "${ARCHS[*]}")
+# Some libraries needs to build arm64 first, while others need x86_64 first (e.g. Qt6)
+ARCHS_REV=()
+for ((i=${#ARCHS[@]}-1; i>=0; i--)); do
+  ARCHS_REV+=("${ARCHS[i]}");
+done
+ARCHS_COMBINED_REV=$(IFS=\; ; echo "${ARCHS_REV[*]}")
 echo "Building on $LOCAL_ARCH for $ARCHS_COMBINED"
 
-echo "Building for $MAC_OSX_VERSION_MIN or later"
+echo "Building for macOS $MAC_OSX_VERSION_MIN or later"
 
 if [ ! $NUMCPU ]; then
   NUMCPU=$(($(sysctl -n hw.ncpu) * 3 / 2))
@@ -974,7 +1081,6 @@ fi
 
 # Build specified (or all) packages
 ALL_PACKAGES=$(all_packages)
-echo $ALL_PACKAGES
 if [ -z "$OPTION_PACKAGES" ]; then
   OPTION_PACKAGES=$ALL_PACKAGES
 fi

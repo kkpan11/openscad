@@ -1,7 +1,11 @@
 #pragma once
 
+#include <initializer_list>
+#include <memory>
 #include <ostream>
 #include <sstream>
+#include <string>
+#include <vector>
 
 class Value;
 
@@ -15,18 +19,26 @@ class UndefType
 {
 public:
   // TODO: eventually deprecate undef creation without a reason.
-  UndefType() : reasons{std::make_unique<std::vector<std::string>>()} { }
-  explicit UndefType(const std::string& why) : reasons{std::make_unique<std::vector<std::string>>(std::initializer_list<std::string>({why}))} { }
+  UndefType() : reasons{std::make_unique<std::vector<std::string>>()} {}
+  explicit UndefType(const std::string& why)
+    : reasons{std::make_unique<std::vector<std::string>>(std::initializer_list<std::string>({why}))}
+  {
+  }
 
   // Append another reason in case a chain of undefined operations are made before handling
-  const UndefType& append(const std::string& why) const { reasons->push_back(why); return *this; }
+  const UndefType& append(const std::string& why) const
+  {
+    reasons->push_back(why);
+    return *this;
+  }
 
   Value operator<(const UndefType& other) const;
   Value operator>(const UndefType& other) const;
   Value operator<=(const UndefType& other) const;
   Value operator>=(const UndefType& other) const;
 
-  std::string toString() const {
+  std::string toString() const
+  {
     std::ostringstream stream;
     if (!reasons->empty()) {
       auto it = reasons->begin();
@@ -40,13 +52,14 @@ public:
     return stream.str();
   }
   bool empty() const { return reasons->empty(); }
+
 private:
   // using unique_ptr to keep the size small enough that the variant of
   // all value types does not exceed the 24 bytes.
-  // mutable to allow clearing reasons, which should avoid duplication of warnings that have already been displayed.
+  // mutable to allow clearing reasons, which should avoid duplication of warnings that have already been
+  // displayed.
   mutable std::unique_ptr<std::vector<std::string>> reasons;
 };
-
 
 inline std::ostream& operator<<(std::ostream& stream, const UndefType& /*u*/)
 {

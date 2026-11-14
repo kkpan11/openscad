@@ -1,12 +1,14 @@
 #pragma once
 
+#include <stdexcept>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <ostream>
 
-#include "GLView.h"
-#include "OpenGLContext.h"
-#include "fbo.h"
+#include "glview/GLView.h"
+#include "glview/OpenGLContext.h"
+#include "glview/fbo.h"
 
 class OffscreenViewException : public std::runtime_error
 {
@@ -20,8 +22,9 @@ public:
   OffscreenView(uint32_t width, uint32_t height);
   ~OffscreenView() override;
   bool save(std::ostream& output) const;
+  // TODO: Do we need to worry about deletion order?
   std::shared_ptr<OpenGLContext> ctx;
-  fbo_t *fbo;
+  std::unique_ptr<FBO> fbo;
 
   // overrides
   bool save(const char *filename) const override;

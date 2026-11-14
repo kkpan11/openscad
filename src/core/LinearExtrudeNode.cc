@@ -24,109 +24,65 @@
  *
  */
 
-#include "LinearExtrudeNode.h"
-
-#include "module.h"
-#include "ModuleInstantiation.h"
-#include "Children.h"
-#include "Parameters.h"
-#include "printutils.h"
-#include "io/fileutils.h"
-#include "Builtins.h"
-#include "handle_dep.h"
+#include "core/LinearExtrudeNode.h"
 
 #include <cmath>
+#include <filesystem>
+#include <memory>
 #include <sstream>
-#include <boost/assign/std/vector.hpp>
-using namespace boost::assign; // bring 'operator+=()' into scope
+#include <utility>
 
-#include <boost/filesystem.hpp>
-namespace fs = boost::filesystem;
+#include "core/Builtins.h"
+#include "core/Children.h"
+#include "core/ModuleInstantiation.h"
+#include "core/Parameters.h"
+#include "core/module.h"
+#include "handle_dep.h"
+#include "io/fileutils.h"
+#include "utils/printutils.h"
 
-/*
- * Historic linear_extrude argument parsing is quirky. To remain bug-compatible,
- * try two different parses depending on conditions.
- */
-Parameters parse_parameters(Arguments arguments, const Location& location)
+namespace {
+std::shared_ptr<AbstractNode> builtin_linear_extrude(const ModuleInstantiation *inst,
+                                                     Arguments arguments, const Children& children)
 {
-  {
-    Parameters normal_parse = Parameters::parse(arguments.clone(), location,
-                                                {"file", "layer", "height", "v", "origin", "scale", "center", "twist", "slices", "segments"},
-                                                {"convexity"}
-                                                );
-    if (normal_parse["height"].isDefined()) {
-      return normal_parse;
-    }
-    if (!(arguments.size() > 0 && !arguments[0].name && arguments[0]->type() == Value::Type::NUMBER)) {
-      return normal_parse;
-    }
-  }
-
-  // if height not given, and first argument is a number,
-  // then assume it should be the height.
-  return Parameters::parse(std::move(arguments), location,
-                           {"height", "v", "file", "layer", "origin", "scale", "center", "twist", "slices", "segments"},
-                           {"convexity"}
-                           );
-}
-
-static std::shared_ptr<AbstractNode> builtin_linear_extrude(const ModuleInstantiation *inst, Arguments arguments, const Children& children)
-{
-  auto node = std::make_shared<LinearExtrudeNode>(inst);
-
-  Parameters parameters = parse_parameters(std::move(arguments), inst->location());
+  Parameters parameters = Parameters::parse(
+    std::move(arguments), inst->location(),
+    {"height", "v", "scale", "center", "twist", "slices", "segments"}, {"convexity", "h"});
   parameters.set_caller("linear_extrude");
 
-  node->fn = parameters["$fn"].toDouble();
-  node->fs = parameters["$fs"].toDouble();
-  node->fa = parameters["$fa"].toDouble();
+  auto node = std::make_shared<LinearExtrudeNode>(inst, CurveDiscretizer(parameters, inst->location()));
 
-  if (!parameters["file"].isUndefined() && parameters["file"].type() == Value::Type::STRING) {
-    LOG(message_group::Deprecated, "Support for reading files in linear_extrude will be removed in future releases. Use a child import() instead.");
-    auto filename = lookup_file(parameters["file"].toString(), inst->location().filePath().parent_path().string(), parameters.documentRoot());
-    node->filename = filename;
-    handle_dep(filename);
-  }
   double height = 100.0;
-  Vector3d v(0,0,1);
 
   if (parameters["v"].isDefined()) {
-    if(!parameters["v"].getVec3(v[0], v[1], v[2])) {
-      v=Vector3d(0,0,1);
-      LOG(message_group::Error, "v when specified should be a 3d vector.");
+    if (!parameters["v"].getVec3(node->height[0], node->height[1], node->height[2])) {
+      LOG(message_group::Warning, inst->location(), parameters.documentRoot(),
+          "v when specified should be a 3d vector");
     }
-
-    if (parameters["height"].isDefined()) {
-      if(!parameters["height"].getFiniteDouble(height))
-        LOG(message_group::Error, "height when specified should be a double.");
-
-      v.normalize();	    
-      v = v * height;
-
-    } 
-    node->height = v;
-  } else if (parameters["height"].isDefined()) {
-    node->height[0]=0;
-    node->height[1]=0;
-    if(!parameters["height"].getFiniteDouble(node->height[2]))
-      LOG(message_group::Error, "height when specified should be a double.");
+    height = 1.0;
   }
-
-  node->layername = parameters["layer"].isUndefined() ? "" : parameters["layer"].toString();
+  const Value& heightValue = parameters[{"height", "h"}];
+  if (heightValue.isDefined()) {
+    if (!heightValue.getFiniteDouble(height)) {
+      LOG(message_group::Warning, inst->location(), parameters.documentRoot(),
+          "height when specified should be a number");
+      height = 100.0;
+    }
+    node->height.normalize();
+  }
+  node->height *= height;
 
   parameters["convexity"].getPositiveInt(node->convexity);
 
-  bool originOk = parameters["origin"].getVec2(node->origin_x, node->origin_y);
-  originOk &= std::isfinite(node->origin_x) && std::isfinite(node->origin_y);
-  if (parameters["origin"].isDefined() && !originOk) {
-    LOG(message_group::Warning, inst->location(), parameters.documentRoot(), "linear_extrude(..., origin=%1$s) could not be converted", parameters["origin"].toEchoStringNoThrow());
-  }
   node->scale_x = node->scale_y = 1;
   bool scaleOK = parameters["scale"].getFiniteDouble(node->scale_x);
   scaleOK &= parameters["scale"].getFiniteDouble(node->scale_y);
   scaleOK |= parameters["scale"].getVec2(node->scale_x, node->scale_y, true);
-  if ((parameters["scale"].isDefined()) && (!scaleOK || !std::isfinite(node->scale_x) || !std::isfinite(node->scale_y))) {
-    LOG(message_group::Warning, inst->location(), parameters.documentRoot(), "linear_extrude(..., scale=%1$s) could not be converted", parameters["scale"].toEchoStringNoThrow());
+  if ((parameters["scale"].isDefined()) &&
+      (!scaleOK || !std::isfinite(node->scale_x) || !std::isfinite(node->scale_y))) {
+    LOG(message_group::Warning, inst->location(), parameters.documentRoot(),
+        "linear_extrude(..., scale=%1$s) could not be converted",
+        parameters["scale"].toEchoStringNoThrow());
   }
 
   if (parameters["center"].type() == Value::Type::BOOL) node->center = parameters["center"].toBool();
@@ -145,31 +101,26 @@ static std::shared_ptr<AbstractNode> builtin_linear_extrude(const ModuleInstanti
     node->has_twist = true;
   }
 
-  if (node->filename.empty()) {
-    children.instantiate(node);
-  } else if (!children.empty()) {
-    LOG(message_group::Warning, inst->location(), parameters.documentRoot(),
-        "module %1$s() does not support child modules when importing a file", inst->name());
-  }
+  children.instantiate(node);
 
   return node;
 }
+
+}  // namespace
 
 std::string LinearExtrudeNode::toString() const
 {
   std::ostringstream stream;
 
   stream << this->name() << "(";
-  if (!this->filename.empty()) { // Ignore deprecated parameters if empty
-    fs::path path((std::string)this->filename);
-    stream <<
-      "file = " << this->filename << ", "
-      "layer = " << QuotedString(this->layername) << ", "
-      "origin = [" << this->origin_x << ", " << this->origin_y << "], "
-           << "timestamp = " << (fs::exists(path) ? fs::last_write_time(path) : 0) << ", "
-    ;
+  double height = this->height.norm();
+  stream << "height = " << height;
+  if (height > 0) {
+    Vector3d v = this->height / height;
+    if (v[2] < 1) {
+      stream << ", v = [ " << v[0] << ", " << v[1] << ", " << v[2] << "]";
+    }
   }
-  stream << "v = [ " <<  this->height[0] << ", " << this->height[1] << ", " << this->height[2] << "]" ;
   if (this->center) {
     stream << ", center = true";
   }
@@ -190,7 +141,7 @@ std::string LinearExtrudeNode::toString() const
   }
 
   if (!(this->has_slices && this->has_segments)) {
-    stream << ", $fn = " << this->fn << ", $fa = " << this->fa << ", $fs = " << this->fs;
+    stream << ", " << this->discretizer;
   }
   if (this->convexity > 1) {
     stream << ", convexity = " << this->convexity;
@@ -199,12 +150,11 @@ std::string LinearExtrudeNode::toString() const
   return stream.str();
 }
 
-void register_builtin_dxf_linear_extrude()
+void register_builtin_linear_extrude()
 {
-  Builtins::init("dxf_linear_extrude", new BuiltinModule(builtin_linear_extrude));
-
   Builtins::init("linear_extrude", new BuiltinModule(builtin_linear_extrude),
-  {
-    "linear_extrude(height = 100, center = false, convexity = 1, twist = 0, scale = 1.0, [slices, segments, v, $fn, $fs, $fa])",
-  });
+                 {
+                   "linear_extrude(height = 100, center = false, convexity = 1, twist = 0, scale = 1.0, "
+                   "[slices, segments, v])",
+                 });
 }

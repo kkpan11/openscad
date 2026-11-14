@@ -26,13 +26,14 @@
 
 #pragma once
 
-#include <tuple>
-
 #include <QFile>
-#include <QString>
 #include <QJsonDocument>
+#include <QString>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "Network.h"
+#include "gui/Network.h"
 
 class OctoPrint
 {
@@ -43,10 +44,14 @@ public:
   const QString url() const;
   const std::string apiKey() const;
   const std::pair<const QString, const QString> getVersion() const;
+  const QString requestApiKey() const;
+  const std::pair<int, QString> pollApiKeyApproval(const QString& token) const;
   const std::vector<std::pair<const QString, const QString>> getSlicers() const;
   const std::vector<std::pair<const QString, const QString>> getProfiles(const QString& slicer) const;
-  const QString upload(const QString& exportFileName, const QString& fileName, const network_progress_func_t& progress_func) const;
-  void slice(const QString& fileUrl, const QString& slicer, const QString& profile, const bool select, const bool print) const;
+  const QString upload(const QString& exportFileName, const QString& fileName,
+                       const network_progress_func_t& progress_func) const;
+  void slice(const QString& fileUrl, const QString& slicer, const QString& profile, const bool select,
+             const bool print) const;
 
 private:
   const QJsonDocument getJsonData(const QString& endpoint) const;

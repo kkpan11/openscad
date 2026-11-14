@@ -25,14 +25,19 @@
  */
 #pragma once
 
+#include <QString>
 #include <QTimer>
+#include <QWidget>
+#include <cstddef>
 #include <map>
+#include <string>
+#include <vector>
 
-#include "qtgettext.h" // IWYU pragma: keep
+#include "core/customizer/ParameterObject.h"
+#include "core/customizer/ParameterSet.h"
+#include "gui/parameter/ParameterVirtualWidget.h"
+#include "gui/qtgettext.h"  // IWYU pragma: keep
 #include "ui_ParameterWidget.h"
-#include "ParameterObject.h"
-#include "ParameterSet.h"
-#include "ParameterVirtualWidget.h"
 
 class ParameterWidget : public QWidget, public Ui::ParameterWidget
 {
@@ -43,7 +48,7 @@ private:
   ParameterObjects parameters;
   std::map<ParameterObject *, std::vector<ParameterVirtualWidget *>> widgets;
 
-  QString invalidJsonFile; // set if a json file was read that could not be parsed
+  QString invalidJsonFile;  // set if a json file was read that could not be parsed
   QTimer autoPreviewTimer;
   bool modified = false;
 
@@ -52,6 +57,7 @@ public:
   void readFile(const QString& scadFile);
   void saveFile(const QString& scadFile);
   void saveBackupFile(const QString& scadFile);
+  void removeBackupFile(const QString& scadFile);
   void setParameters(const SourceFile *sourceFile, const std::string& source);
   void applyParameters(SourceFile *sourceFile);
   bool childHasFocus();
@@ -59,20 +65,24 @@ public:
 
 public slots:
   void setModified(bool modified = true);
-  void setFontFamilySize(const QString &fontfamily, uint fontsize);
+  void setFontFamilySize(const QString& fontfamily, uint fontsize);
 
 protected slots:
   void autoPreview(bool immediate = false);
   void emitParametersChanged();
-  void onSetChanged(int index);
+  void on_comboBoxPreset_activated(int index);
   void onSetNameChanged();
-  void onSetAdd();
-  void onSetDelete();
+  void on_addButton_clicked();
+  void on_deleteButton_clicked();
+  void onCollapseAll();
+  void onExpandAll();
   void parameterModified(bool immediate);
   void loadSet(size_t index);
   void createSet(const QString& name);
   void updateSetEditability();
   void rebuildWidgets();
+  void on_checkBoxAutoPreview_toggled(bool);
+  void on_comboBoxDetails_currentIndexChanged(int);
 
 signals:
   // emitted when the effective values of the parameters have changed,
@@ -83,13 +93,13 @@ signals:
   void modificationChanged();
 
 protected:
-  struct ParameterGroup
-  {
+  struct ParameterGroup {
     QString name;
     std::vector<ParameterObject *> parameters;
   };
   std::vector<ParameterGroup> getParameterGroups();
-  ParameterVirtualWidget *createParameterWidget(ParameterObject *parameter, DescriptionStyle descriptionStyle);
+  ParameterVirtualWidget *createParameterWidget(ParameterObject *parameter,
+                                                DescriptionStyle descriptionStyle);
   QString getJsonFile(const QString& scadFile);
   void cleanSets();
 };

@@ -1,11 +1,21 @@
-#include "Annotation.h"
-#include "Assignment.h"
-#include "Expression.h"
-#include "SourceFile.h"
-#include "ParameterObject.h"
+#include "core/customizer/ParameterObject.h"
 
-#include <sstream>
 #include <boost/algorithm/string.hpp>
+#include <cstddef>
+#include <map>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "core/AST.h"
+#include "core/Assignment.h"
+#include "core/Expression.h"
+#include "core/SourceFile.h"
+#include "core/customizer/Annotation.h"
+#include "utils/printutils.h"
 
 namespace {
 
@@ -22,7 +32,7 @@ bool set_enum_value(json& o, const std::string& name, const EnumParameter::EnumI
   }
 }
 
-}
+}  // namespace
 
 bool BoolParameter::importValue(boost::property_tree::ptree encodedValue, bool store)
 {
@@ -56,14 +66,13 @@ void BoolParameter::apply(Assignment *assignment) const
   assignment->setExpr(std::make_shared<Literal>(value));
 }
 
-StringParameter::StringParameter(
-  const std::string& name, const std::string& description, const std::string& group,
-  const std::string& defaultValue,
-  boost::optional<size_t> maximumSize
-  ) :
-  ParameterObject(name, description, group, ParameterObject::ParameterType::String),
-  value(defaultValue), defaultValue(defaultValue),
-  maximumSize(maximumSize)
+StringParameter::StringParameter(const std::string& name, const std::string& description,
+                                 const std::string& group, const std::string& defaultValue,
+                                 boost::optional<size_t> maximumSize)
+  : ParameterObject(name, description, group, ParameterObject::ParameterType::String),
+    value(defaultValue),
+    defaultValue(defaultValue),
+    maximumSize(maximumSize)
 {
   if (maximumSize && defaultValue.size() > *maximumSize) {
     maximumSize = defaultValue.size();
@@ -138,8 +147,8 @@ json NumberParameter::jsonValue() const
   if (maximum.is_initialized()) {
     o["max"] = maximum.get();
     o["min"] = minimum.is_initialized() ? minimum.get() : 0.0;
-    o["step"] = step.is_initialized() ? step.get() : 1.0;
   }
+  o["step"] = step.is_initialized() ? step.get() : 1.0;
   return o;
 }
 
@@ -238,7 +247,8 @@ bool EnumParameter::importValue(boost::property_tree::ptree encodedValue, bool s
   int index;
   boost::optional<double> decodedDouble = encodedValue.get_value_optional<double>();
   for (size_t i = 0; i < items.size(); i++) {
-    if ((decodedDouble && items[i].value == EnumValue(*decodedDouble)) || items[i].value == EnumValue(encodedValue.data())) {
+    if ((decodedDouble && items[i].value == EnumValue(*decodedDouble)) ||
+        items[i].value == EnumValue(encodedValue.data())) {
       index = i;
       found = true;
       break;
@@ -297,14 +307,12 @@ void EnumParameter::apply(Assignment *assignment) const
   }
 }
 
-
-
-struct EnumValues
-{
+struct EnumValues {
   std::vector<EnumParameter::EnumItem> items;
   int defaultValueIndex;
 };
-static EnumValues parseEnumItems(const Expression *parameter, const std::string& defaultKey, const EnumParameter::EnumValue& defaultValue)
+static EnumValues parseEnumItems(const Expression *parameter, const std::string& defaultKey,
+                                 const EnumParameter::EnumValue& defaultValue)
 {
   EnumValues output;
 
@@ -383,13 +391,14 @@ static EnumValues parseEnumItems(const Expression *parameter, const std::string&
   return output;
 }
 
-struct NumericLimits
-{
+struct NumericLimits {
   boost::optional<double> minimum;
   boost::optional<double> maximum;
   boost::optional<double> step;
 };
-static NumericLimits parseNumericLimits(const Expression *parameter, const std::vector<double>& values)
+static NumericLimits parseNumericLimits(const std::string& name, const Expression *parameter,
+                                        const Location& location, const std::string& docPath,
+                                        const std::vector<double>& values)
 {
   NumericLimits output;
 
@@ -407,10 +416,7 @@ static NumericLimits parseNumericLimits(const Expression *parameter, const std::
   } else if (const auto *range = dynamic_cast<const Range *>(parameter)) {
     const auto *minimum = dynamic_cast<const Literal *>(range->getBegin());
     const auto *maximum = dynamic_cast<const Literal *>(range->getEnd());
-    if (
-      minimum && minimum->isDouble()
-      && maximum && maximum->isDouble()
-      ) {
+    if (minimum && minimum->isDouble() && maximum && maximum->isDouble()) {
       output.minimum = minimum->toDouble();
       output.maximum = maximum->toDouble();
 
@@ -420,19 +426,34 @@ static NumericLimits parseNumericLimits(const Expression *parameter, const std::
       }
     }
   }
+
+  // output.minimum/maximum get widened multiple times when processing vectors,
+  // therefore the original values need to be cached for accurate warnings
+  const boost::optional<double> declaredMinimum = output.minimum;
+  const boost::optional<double> declaredMaximum = output.maximum;
+
   for (double value : values) {
-    if (output.minimum && value < output.minimum) {
-      output.minimum = value;
+    if (declaredMinimum && value < declaredMinimum) {
+      LOG(message_group::Warning, location, docPath,
+          "Parameter %1$s: value %2$g is below the declared minimum %3$g, adjusting minimum value",
+          quoteVar(name), value, *declaredMinimum);
+
+      if (value < output.minimum) output.minimum = value;
     }
-    if (output.maximum && value > output.maximum) {
-      output.maximum = value;
+    if (declaredMaximum && value > declaredMaximum) {
+      LOG(message_group::Warning, location, docPath,
+          "Parameter %1$s: value %2$g is above the declared maximum %3$g, adjusting maximum value",
+          quoteVar(name), value, *declaredMaximum);
+
+      if (value > output.maximum) output.maximum = value;
     }
   }
 
   return output;
 }
 
-std::unique_ptr<ParameterObject> ParameterObject::fromAssignment(const Assignment *assignment)
+std::unique_ptr<ParameterObject> ParameterObject::fromAssignment(const Assignment *assignment,
+                                                                 const std::string& docPath)
 {
   std::string name = assignment->getName();
 
@@ -458,7 +479,6 @@ std::unique_ptr<ParameterObject> ParameterObject::fromAssignment(const Assignmen
     const auto *expression = dynamic_cast<const Literal *>(groupAnnotation->getExpr().get());
     if (expression && expression->isString()) {
       group = boost::algorithm::trim_copy(expression->toString());
-
     }
     if (group == "Hidden") return nullptr;
   }
@@ -481,7 +501,8 @@ std::unique_ptr<ParameterObject> ParameterObject::fromAssignment(const Assignmen
       }
       EnumValues values = parseEnumItems(parameter, key, value);
       if (!values.items.empty()) {
-        return std::make_unique<EnumParameter>(name, description, group, values.defaultValueIndex, values.items);
+        return std::make_unique<EnumParameter>(name, description, group, values.defaultValueIndex,
+                                               values.items);
       }
     }
 
@@ -497,8 +518,9 @@ std::unique_ptr<ParameterObject> ParameterObject::fromAssignment(const Assignmen
 
     if (expression->isDouble()) {
       double value = expression->toDouble();
-      NumericLimits limits = parseNumericLimits(parameter, {value});
-      return std::make_unique<NumberParameter>(name, description, group, value, limits.minimum, limits.maximum, limits.step);
+      auto limits = parseNumericLimits(name, parameter, assignment->location(), docPath, {value});
+      return std::make_unique<NumberParameter>(name, description, group, value, limits.minimum,
+                                               limits.maximum, limits.step);
     }
   } else if (const auto *expression = dynamic_cast<const Vector *>(valueExpression)) {
     if (expression->getChildren().size() < 1 || expression->getChildren().size() > 4) {
@@ -517,17 +539,24 @@ std::unique_ptr<ParameterObject> ParameterObject::fromAssignment(const Assignmen
       value.push_back(item->toDouble());
     }
 
-    NumericLimits limits = parseNumericLimits(parameter, value);
-    return std::make_unique<VectorParameter>(name, description, group, value, limits.minimum, limits.maximum, limits.step);
+    auto limits = parseNumericLimits(name, parameter, assignment->location(), docPath, value);
+    return std::make_unique<VectorParameter>(name, description, group, value, limits.minimum,
+                                             limits.maximum, limits.step);
   }
   return nullptr;
 }
 
 ParameterObjects ParameterObjects::fromSourceFile(const SourceFile *sourceFile)
 {
+  // Warnings logged while parsing parameters (see parseNumericLimits) need a
+  // stable docPath: an empty one makes Location::toRelativeString() fall back
+  // to the current working directory (see fs_uncomplete()), which is neither
+  // stable across invocations nor meaningful to the person reading the warning.
+  const auto docPath = fs::path(sourceFile->getFullpath()).parent_path().generic_string();
+
   ParameterObjects output;
-  for (const auto& assignment : sourceFile->scope.assignments) {
-    std::unique_ptr<ParameterObject> parameter = ParameterObject::fromAssignment(assignment.get());
+  for (const auto& assignment : sourceFile->scope->assignments) {
+    auto parameter = ParameterObject::fromAssignment(assignment.get(), docPath);
     if (parameter) {
       output.push_back(std::move(parameter));
     }
@@ -571,7 +600,7 @@ void ParameterObjects::apply(SourceFile *sourceFile) const
     namedParameters[parameter->name()] = parameter.get();
   }
 
-  for (auto& assignment : sourceFile->scope.assignments) {
+  for (auto& assignment : sourceFile->scope->assignments) {
     if (namedParameters.count(assignment->getName())) {
       namedParameters[assignment->getName()]->apply(assignment.get());
     }

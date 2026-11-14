@@ -1,19 +1,21 @@
-#include <mutex>
-#include <string>
-#include <fstream>
-#include <streambuf>
-#include <unistd.h>
 #include <sys/resource.h>
 #include <sys/utsname.h>
+#include <unistd.h>
 
-#include <boost/regex.hpp>
 #include <boost/algorithm/string.hpp>
-#include <boost/filesystem.hpp>
+#include <boost/regex.hpp>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <ios>
+#include <iterator>
+#include <mutex>
+#include <string>
 
+#include "platform/PlatformUtils.h"
 #include "version.h"
-#include "PlatformUtils.h"
 
-namespace fs = boost::filesystem;
+namespace fs = std::filesystem;
 
 static std::mutex user_agent_mutex;
 
@@ -122,6 +124,7 @@ std::string PlatformUtils::userConfigPath()
 
 unsigned long PlatformUtils::stackLimit()
 {
+#ifndef __EMSCRIPTEN__
   struct rlimit limit;
 
   int ret = getrlimit(RLIMIT_STACK, &limit);
@@ -130,15 +133,16 @@ unsigned long PlatformUtils::stackLimit()
       return STACK_LIMIT_DEFAULT;
     }
     if (limit.rlim_cur > STACK_BUFFER_SIZE) {
-      return limit.rlim_cur - STACK_BUFFER_SIZE;
+      return static_cast<unsigned long>(limit.rlim_cur - STACK_BUFFER_SIZE);
     }
     if (limit.rlim_max == RLIM_INFINITY) {
       return STACK_LIMIT_DEFAULT;
     }
     if (limit.rlim_max > STACK_BUFFER_SIZE) {
-      return limit.rlim_max - STACK_BUFFER_SIZE;
+      return static_cast<unsigned long>(limit.rlim_max - STACK_BUFFER_SIZE);
     }
   }
+#endif  // __EMSCRIPTEN__
 
   return STACK_LIMIT_DEFAULT;
 }
@@ -271,4 +275,16 @@ const std::string PlatformUtils::sysinfo(bool extended)
   return result;
 }
 
-void PlatformUtils::ensureStdIO() {}
+void PlatformUtils::ensureStdIO()
+{
+}
+
+FILE *PlatformUtils::fopen(const fs::path& path, const char *mode)
+{
+  return ::fopen(path.c_str(), mode);
+}
+
+int PlatformUtils::stat(const fs::path& path, struct ::stat& st)
+{
+  return ::stat(path.c_str(), &st);
+}

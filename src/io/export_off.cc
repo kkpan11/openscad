@@ -25,10 +25,24 @@
  *
  */
 
-#include "export.h"
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <ostream>
 
-#include "PolySet.h"
-#include "PolySetUtils.h"
+#include "Feature.h"
+#include "geometry/Geometry.h"
+#include "geometry/PolySet.h"
+#include "geometry/PolySetUtils.h"
+#include "io/export.h"
+#include "utils/printutils.h"
+
+// https://en.wikipedia.org/wiki/OFF_(file_format)
+//
+// https://segeval.cs.princeton.edu/public/off_format.html
+// Note: OFF header is supposed to be the only content on the
+// first line, the docs above show that wrong in the first
+// example.
 
 void export_off(const std::shared_ptr<const Geometry>& geom, std::ostream& output)
 {
@@ -36,18 +50,33 @@ void export_off(const std::shared_ptr<const Geometry>& geom, std::ostream& outpu
   if (Feature::ExperimentalPredictibleOutput.is_enabled()) {
     ps = createSortedPolySet(*ps);
   }
-
-  output << "OFF " << ps->vertices.size() << " " << ps->indices.size() << " 0\n";
   const auto& v = ps->vertices;
-  size_t numverts = v.size();
+  const size_t numverts = v.size();
+
+  output << "OFF\n" << numverts << " " << ps->indices.size() << " 0\n";
   for (size_t i = 0; i < numverts; ++i) {
     output << v[i][0] << " " << v[i][1] << " " << v[i][2] << " " << "\n";
   }
+
+  auto has_color = !ps->color_indices.empty();
+
   for (size_t i = 0; i < ps->indices.size(); ++i) {
-    int nverts = ps->indices[i].size();
+    const size_t nverts = ps->indices[i].size();
     output << nverts;
     for (size_t n = 0; n < nverts; ++n) output << " " << ps->indices[i][n];
+    if (has_color) {
+      auto color_index = ps->color_indices[i];
+      if (color_index >= 0) {
+        auto color = ps->colors[color_index];
+        int r, g, b, a;
+        if (!color.getRgba(r, g, b, a)) {
+          LOG(message_group::Warning, "Invalid color in OFF export");
+        }
+        output << " " << r << " " << g << " " << b;
+        // Alpha channel is read by apps like MeshLab.
+        if (a != 255) output << " " << a;
+      }
+    }
     output << "\n";
   }
-
 }

@@ -24,11 +24,21 @@
  *
  */
 
-#include "GeometryUtils.h"
-#include "linalg.h"
-#include "node.h"
+#include <cstddef>
+#include <memory>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "core/CurveDiscretizer.h"
+#include "core/ModuleInstantiation.h"
+#include "core/node.h"
+#include "geometry/Geometry.h"
+#include "geometry/GeometryUtils.h"
+#include "geometry/linalg.h"
+
+class PolySet;
 
 class CubeNode : public LeafNode
 {
@@ -37,11 +47,8 @@ public:
   std::string toString() const override
   {
     std::ostringstream stream;
-    stream << "cube(size = ["
-           << x << ", "
-           << y << ", "
-           << z << "], center = "
-           << (center ? "true" : "false") << ")";
+    stream << "cube(size = [" << x << ", " << y << ", " << z
+           << "], center = " << (center ? "true" : "false") << ")";
     return stream.str();
   }
   std::string name() const override { return "cube"; }
@@ -51,61 +58,47 @@ public:
   bool center = false;
 };
 
-
 class SphereNode : public LeafNode
 {
 public:
-  SphereNode(const ModuleInstantiation *mi) : LeafNode(mi) {}
-  std::string toString() const override
+  SphereNode(const ModuleInstantiation *mi, CurveDiscretizer discretizer)
+    : LeafNode(mi), discretizer(std::move(discretizer))
   {
-    std::ostringstream stream;
-    stream << "sphere"
-           << "($fn = " << fn
-           << ", $fa = " << fa
-           << ", $fs = " << fs
-           << ", r = " << r
-           << ")";
-    return stream.str();
   }
+  std::string toString() const override;
   std::string name() const override { return "sphere"; }
   std::unique_ptr<const Geometry> createGeometry() const override;
 
-  double fn, fs, fa;
+  CurveDiscretizer discretizer;
   double r = 1;
-};
+  // "orig": rings of latitude; "octa": subdivided octahedron, see createGeometryOcta()
+  std::string style = "orig";
 
+private:
+  std::unique_ptr<PolySet> createGeometryOrig(int num_fragments) const;
+  std::unique_ptr<PolySet> createGeometryOcta(int num_fragments) const;
+};
 
 class CylinderNode : public LeafNode
 {
 public:
-  CylinderNode(const ModuleInstantiation *mi) : LeafNode(mi) {}
-  std::string toString() const override
+  CylinderNode(const ModuleInstantiation *mi, CurveDiscretizer discretizer)
+    : LeafNode(mi), discretizer(std::move(discretizer))
   {
-    std::ostringstream stream;
-    stream << "cylinder"
-           << "($fn = " << fn
-           << ", $fa = " << fa
-           << ", $fs = " << fs
-           << ", h = " << h
-           << ", r1 = " << r1
-           << ", r2 = " << r2
-           << ", center = " << (center ? "true" : "false")
-           << ")";
-    return stream.str();
   }
+  std::string toString() const override;
   std::string name() const override { return "cylinder"; }
   std::unique_ptr<const Geometry> createGeometry() const override;
 
-  double fn, fs, fa;
+  CurveDiscretizer discretizer;
   double r1 = 1, r2 = 1, h = 1;
   bool center = false;
 };
 
-
 class PolyhedronNode : public LeafNode
 {
 public:
-  PolyhedronNode (const ModuleInstantiation *mi) : LeafNode(mi) {}
+  PolyhedronNode(const ModuleInstantiation *mi) : LeafNode(mi) {}
   std::string toString() const override;
   std::string name() const override { return "polyhedron"; }
   std::unique_ptr<const Geometry> createGeometry() const override;
@@ -115,7 +108,6 @@ public:
   int convexity = 1;
 };
 
-
 class SquareNode : public LeafNode
 {
 public:
@@ -123,10 +115,8 @@ public:
   std::string toString() const override
   {
     std::ostringstream stream;
-    stream << "square(size = ["
-           << x << ", "
-           << y << "], center = "
-           << (center ? "true" : "false") << ")";
+    stream << "square(size = [" << x << ", " << y << "], center = " << (center ? "true" : "false")
+           << ")";
     return stream.str();
   }
   std::string name() const override { return "square"; }
@@ -136,34 +126,25 @@ public:
   bool center = false;
 };
 
-
 class CircleNode : public LeafNode
 {
 public:
-  CircleNode(const ModuleInstantiation *mi) : LeafNode(mi) {}
-  std::string toString() const override
+  CircleNode(const ModuleInstantiation *mi, CurveDiscretizer discretizer)
+    : LeafNode(mi), discretizer(std::move(discretizer))
   {
-    std::ostringstream stream;
-    stream << "circle"
-           << "($fn = " << fn
-           << ", $fa = " << fa
-           << ", $fs = " << fs
-           << ", r = " << r
-           << ")";
-    return stream.str();
   }
+  std::string toString() const override;
   std::string name() const override { return "circle"; }
   std::unique_ptr<const Geometry> createGeometry() const override;
 
-  double fn, fs, fa;
+  CurveDiscretizer discretizer;
   double r = 1;
 };
-
 
 class PolygonNode : public LeafNode
 {
 public:
-  PolygonNode (const ModuleInstantiation *mi) : LeafNode(mi) {}
+  PolygonNode(const ModuleInstantiation *mi) : LeafNode(mi) {}
   std::string toString() const override;
   std::string name() const override { return "polygon"; }
   std::unique_ptr<const Geometry> createGeometry() const override;
@@ -172,4 +153,3 @@ public:
   std::vector<std::vector<size_t>> paths;
   int convexity = 1;
 };
-

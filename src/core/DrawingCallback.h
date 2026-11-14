@@ -25,10 +25,13 @@
  */
 #pragma once
 
-#include <vector>
-#include <cmath>
 #include <Eigen/Core>
-#include "Polygon2d.h"
+#include <cmath>
+#include <memory>
+#include <vector>
+
+#include "geometry/Polygon2d.h"
+#include "geometry/linalg.h"
 
 class Polygon2d;
 class Geometry;
@@ -43,12 +46,13 @@ public:
   void finish_glyph();
   void set_glyph_offset(double offset_x, double offset_y);
   void add_glyph_advance(double advance_x, double advance_y);
-  std::vector<std::shared_ptr<const Geometry>> get_result();
+  std::vector<std::shared_ptr<const Polygon2d>> get_result();
 
   void move_to(const Vector2d& to);
   void line_to(const Vector2d& to);
   void curve_to(const Vector2d& c1, const Vector2d& to);
   void curve_to(const Vector2d& c1, const Vector2d& c2, const Vector2d& to);
+
 private:
   Vector2d pen;
   Vector2d offset;
@@ -58,7 +62,7 @@ private:
 
   Outline2d outline;
   std::shared_ptr<Polygon2d> polygon;
-  std::vector<std::shared_ptr<const Geometry>> polygons;
+  std::vector<std::shared_ptr<const Polygon2d>> polygons;
 
   void add_vertex(const Vector2d& v);
 };

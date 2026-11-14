@@ -24,10 +24,13 @@
  *
  */
 
-#include "Assignment.h"
-#include "Annotation.h"
-#include "Expression.h"
-#include <sstream>
+#include "core/Assignment.h"
+
+#include <ostream>
+#include <string>
+
+#include "core/Expression.h"
+#include "core/customizer/Annotation.h"
 
 void Assignment::addAnnotations(AnnotationList *annotations)
 {
@@ -46,7 +49,6 @@ const Annotation *Assignment::annotation(const std::string& name) const
   auto found = annotations.find(name);
   return found == annotations.end() ? nullptr : found->second;
 }
-
 
 void Assignment::print(std::ostream& stream, const std::string& indent) const
 {

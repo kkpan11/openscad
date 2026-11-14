@@ -1,15 +1,26 @@
-#include "PolySetUtils.h"
-#include "PolySet.h"
-#include "PolySetBuilder.h"
-#include "Polygon2d.h"
-#include "printutils.h"
-#include "GeometryUtils.h"
+#include "geometry/PolySetUtils.h"
+
+#include <boost/range/adaptor/reversed.hpp>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "geometry/Geometry.h"
+#include "geometry/GeometryUtils.h"
+#include "geometry/PolySet.h"
+#include "geometry/PolySetBuilder.h"
+#include "geometry/Polygon2d.h"
+#include "geometry/linalg.h"
+#include "utils/printutils.h"
 #ifdef ENABLE_CGAL
-#include "cgalutils.h"
-#include "CGALHybridPolyhedron.h"
+#include "geometry/cgal/cgalutils.h"
 #endif
 #ifdef ENABLE_MANIFOLD
-#include "ManifoldGeometry.h"
+#include "geometry/manifold/ManifoldGeometry.h"
 #endif
 
 namespace PolySetUtils {
@@ -17,14 +28,15 @@ namespace PolySetUtils {
 // Project all polygons (also back-facing) into a Polygon2d instance.
 // It is important to select all faces, since filtering by normal vector here
 // will trigger floating point incertainties and cause problems later.
-std::unique_ptr<Polygon2d> project(const PolySet& ps) {
+std::unique_ptr<Polygon2d> project(const PolySet& ps)
+{
   auto poly = std::make_unique<Polygon2d>();
 
   Vector3d pt;
   for (const auto& p : ps.indices) {
     Outline2d outline;
     for (const auto& v : p) {
-      pt=ps.vertices[v];	    
+      pt = ps.vertices[v];
       outline.vertices.emplace_back(pt[0], pt[1]);
     }
     poly->addOutline(outline);
@@ -57,10 +69,13 @@ std::unique_ptr<PolySet> tessellate_faces(const PolySet& polyset)
   auto result = std::make_unique<PolySet>(3, polyset.convexValue());
   result->setConvexity(polyset.getConvexity());
   result->setTriangular(true);
+  result->setManifold(polyset.isManifold());
   // ideally this should not require a copy...
   if (polyset.isTriangular()) {
     result->vertices = polyset.vertices;
     result->indices = polyset.indices;
+    result->color_indices = polyset.color_indices;
+    result->colors = polyset.colors;
     return result;
   }
   result->vertices.reserve(polyset.vertices.size());
@@ -70,7 +85,15 @@ std::unique_ptr<PolySet> tessellate_faces(const PolySet& polyset)
   // best estimate without iterating all polygons, to reduce reallocations
   std::vector<IndexedFace> polygons;
   polygons.reserve(polyset.indices.size());
-  for (const auto& pgon : polyset.indices) {
+  std::vector<int32_t> polygon_color_indices;
+  auto has_colors = !polyset.color_indices.empty();
+  if (has_colors) {
+    assert(polyset.color_indices.size() == polyset.indices.size());
+    polygon_color_indices.reserve(polyset.color_indices.size());
+    result->colors = polyset.colors;
+  }
+  for (size_t i = 0, n = polyset.indices.size(); i < n; i++) {
+    const auto& pgon = polyset.indices[i];
     if (pgon.size() < 3) {
       degeneratePolygons++;
       continue;
@@ -88,8 +111,10 @@ std::unique_ptr<PolySet> tessellate_faces(const PolySet& polyset)
       polygons.pop_back();
       continue;
     }
-    for (const auto& ind : currface)
-      used[ind] = true;
+    if (has_colors) {
+      polygon_color_indices.push_back(polyset.color_indices[i]);
+    }
+    for (const auto& ind : currface) used[ind] = true;
   }
   // remove unreferenced vertices
   std::vector<Vector3f> verts;
@@ -105,18 +130,19 @@ std::unique_ptr<PolySet> tessellate_faces(const PolySet& polyset)
   if (verts.size() != polyset.vertices.size()) {
     // only remap indices when some vertices are really removed
     for (auto& face : polygons) {
-      for (auto& ind : face)
-        ind = indexMap[ind];
+      for (auto& ind : face) ind = indexMap[ind];
     }
   }
 
   // we will reuse this memory instead of reallocating for each polygon
   std::vector<IndexedTriangle> triangles;
   std::vector<IndexedFace> facesBuffer(1);
-  for (const auto& face : polygons) {
+  for (size_t i = 0, n = polygons.size(); i < n; i++) {
+    const auto& face = polygons[i];
     if (face.size() == 3) {
       // trivial case - triangles cannot be concave or have holes
-       result->indices.push_back({face[0],face[1],face[2]});
+      result->indices.push_back({face[0], face[1], face[2]});
+      if (has_colors) result->color_indices.push_back(polygon_color_indices[i]);
     }
     // Quads seem trivial, but can be concave, and can have degenerate cases.
     // So everything more complex than triangles goes into the general case.
@@ -126,7 +152,8 @@ std::unique_ptr<PolySet> tessellate_faces(const PolySet& polyset)
       auto err = GeometryUtils::tessellatePolygonWithHoles(verts, facesBuffer, triangles, nullptr);
       if (!err) {
         for (const auto& t : triangles) {
-          result->indices.push_back({t[0],t[1],t[2]});
+          result->indices.push_back({t[0], t[1], t[2]});
+          if (has_colors) result->color_indices.push_back(polygon_color_indices[i]);
         }
       }
     }
@@ -137,7 +164,8 @@ std::unique_ptr<PolySet> tessellate_faces(const PolySet& polyset)
   return result;
 }
 
-bool is_approximately_convex(const PolySet& ps) {
+bool is_approximately_convex(const PolySet& ps)
+{
 #ifdef ENABLE_CGAL
   return CGALUtils::is_approximately_convex(ps);
 #else
@@ -156,7 +184,7 @@ std::shared_ptr<const PolySet> getGeometryAsPolySet(const std::shared_ptr<const 
     return ps;
   }
 #ifdef ENABLE_CGAL
-  if (auto N = std::dynamic_pointer_cast<const CGAL_Nef_polyhedron>(geom)) {
+  if (auto N = std::dynamic_pointer_cast<const CGALNefGeometry>(geom)) {
     if (!N->isEmpty()) {
       if (auto ps = CGALUtils::createPolySetFromNefPolyhedron3(*N->p3)) {
         ps->setConvexity(N->getConvexity());
@@ -166,9 +194,6 @@ std::shared_ptr<const PolySet> getGeometryAsPolySet(const std::shared_ptr<const 
     }
     return PolySet::createEmpty();
   }
-  if (auto hybrid = std::dynamic_pointer_cast<const CGALHybridPolyhedron>(geom)) {
-    return hybrid->toPolySet();
-  }
 #endif
 #ifdef ENABLE_MANIFOLD
   if (auto mani = std::dynamic_pointer_cast<const ManifoldGeometry>(geom)) {
@@ -177,7 +202,6 @@ std::shared_ptr<const PolySet> getGeometryAsPolySet(const std::shared_ptr<const 
 #endif
   return nullptr;
 }
-
 
 std::string polySetToPolyhedronSource(const PolySet& ps)
 {
@@ -191,7 +215,7 @@ std::string polySetToPolyhedronSource(const PolySet& ps)
   sstr << "  faces=[\n";
   for (const auto& polygon : ps.indices) {
     sstr << "[";
-    for (const auto idx : polygon) {
+    for (const auto idx : boost::adaptors::reverse(polygon)) {
       sstr << idx << ",";
     }
     sstr << "],\n";
@@ -201,4 +225,4 @@ std::string polySetToPolyhedronSource(const PolySet& ps)
   return sstr.str();
 }
 
-} // namespace PolySetUtils
+}  // namespace PolySetUtils

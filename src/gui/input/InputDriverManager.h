@@ -25,13 +25,19 @@
  */
 #pragma once
 
-#include <QWidget>
+#include <QIcon>
+#include <QList>
+#include <QObject>
+#include <QString>
 #include <QThread>
 #include <QTimer>
-#include <QIcon>
+#include <QWidget>
+#include <cstddef>
+#include <list>
+#include <string>
 
-#include "InputDriver.h"
-#include "InputEventMapper.h"
+#include "gui/input/InputDriver.h"
+#include "gui/input/InputEventMapper.h"
 
 class MainWindow;
 
@@ -72,7 +78,8 @@ public:
   void registerDriver(InputDriver *driver);
   void unregisterDriver(InputDriver *driver);
   void closeDrivers();
-  void registerActions(const QList<QAction *>& actions, const QString& parent = QString(""), const QString& target = QString(""));
+  void registerActions(const QList<QAction *>& actions, const QString& parent = QString(""),
+                       const QString& target = QString(""));
 
   static InputDriverManager *instance();
 

@@ -1,9 +1,17 @@
-#include "parsersettings.h"
-#include <boost/filesystem.hpp>
-#include <boost/algorithm/string.hpp>
-#include "PlatformUtils.h"
+#include "core/parsersettings.h"
 
-namespace fs = boost::filesystem;
+#include <algorithm>
+#include <boost/algorithm/string.hpp>
+#include <cassert>
+#include <cstdlib>
+#include <filesystem>
+#include <iterator>
+#include <string>
+#include <vector>
+
+#include "platform/PlatformUtils.h"
+
+namespace fs = std::filesystem;
 
 std::vector<std::string> librarypath;
 
@@ -75,15 +83,22 @@ static bool check_valid(const fs::path& p, const std::vector<std::string> *openf
    Returns the absolute path to a valid file, or an empty path if no
    valid files could be found.
  */
-inline fs::path find_valid_path_(const fs::path& sourcepath,
-                          const fs::path& localpath,
-                          const std::vector<std::string> *openfilenames)
+inline fs::path find_valid_path_(const fs::path& sourcepath, const fs::path& localpath,
+                                 const std::vector<std::string> *openfilenames)
 {
   if (localpath.is_absolute()) {
-    if (check_valid(localpath, openfilenames)) return fs::canonical(localpath);
+    if (check_valid(localpath, openfilenames)) {
+#ifndef __EMSCRIPTEN__
+      return fs::canonical(localpath);
+#else
+      return localpath;
+#endif
+    }
   } else {
     fs::path fpath = sourcepath / localpath;
+#ifndef __EMSCRIPTEN__
     if (fs::exists(fpath)) fpath = fs::canonical(fpath);
+#endif
     if (check_valid(fpath, openfilenames)) return fpath;
     fpath = search_libs(localpath);
     if (!fpath.empty() && check_valid(fpath, openfilenames)) return fpath;
@@ -91,13 +106,11 @@ inline fs::path find_valid_path_(const fs::path& sourcepath,
   return {};
 }
 
-fs::path find_valid_path(const fs::path& sourcepath,
-                         const fs::path& localpath,
+fs::path find_valid_path(const fs::path& sourcepath, const fs::path& localpath,
                          const std::vector<std::string> *openfilenames)
 {
   return {find_valid_path_(sourcepath, localpath, openfilenames).generic_string()};
 }
-
 
 static bool path_contains_file(fs::path dir, fs::path file)
 {
@@ -131,7 +144,6 @@ fs::path get_library_for_path(const fs::path& localpath)
   return {};
 }
 
-
 void parser_init()
 {
   // Add paths from OPENSCADPATH before adding built-in paths
@@ -140,12 +152,21 @@ void parser_init()
     std::string paths(openscadpaths);
     std::string sep = PlatformUtils::pathSeparatorChar();
     using string_split_iterator = boost::split_iterator<std::string::iterator>;
-    for (string_split_iterator it = boost::make_split_iterator(paths, boost::first_finder(sep, boost::is_iequal())); it != string_split_iterator(); ++it) {
-      add_librarydir(fs::absolute(fs::path(boost::copy_range<std::string>(*it))).generic_string());
+    for (string_split_iterator it =
+           boost::make_split_iterator(paths, boost::first_finder(sep, boost::is_iequal()));
+         it != string_split_iterator(); ++it) {
+      auto str{boost::copy_range<std::string>(*it)};
+      fs::path abspath = str.empty() ? fs::current_path() : fs::absolute(fs::path(str));
+      add_librarydir(abspath.generic_string());
     }
   }
 
   add_librarydir(PlatformUtils::userLibraryPath());
 
-  add_librarydir(fs::absolute(PlatformUtils::resourcePath("libraries")).string());
+  fs::path libpath = PlatformUtils::resourcePath("libraries");
+  // std::filesystem::absolute() will throw if passed empty path
+  if (libpath.empty()) {
+    libpath = fs::current_path();
+  }
+  add_librarydir(fs::absolute(libpath).string());
 }

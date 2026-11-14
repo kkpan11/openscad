@@ -1,8 +1,7 @@
 #pragma once
 
-#include "enums.h"
-#include "PolySet.h"
-#include "Geometry.h"
+#include <memory>
 
-std::unique_ptr<PolySet> applyHull(const Geometry::Geometries& children);
+#include "geometry/Geometry.h"
+
 std::shared_ptr<const Geometry> applyMinkowski(const Geometry::Geometries& children);

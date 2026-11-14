@@ -1,22 +1,41 @@
 #pragma once
 
-#include "system-gl.h"
-#include <cstddef> // size_t
+#include <cstddef>
+#include <memory>
 
-struct fbo_t
+#include "glview/system-gl.h"
+#include "glview/OpenGLContext.h"
+
+class FBO
 {
-  GLuint fbo_id;
-  GLuint old_fbo_id;
+public:
+  FBO(int width, int height, bool useEXT);
+  ~FBO() { destroy(); };
 
-  GLuint renderbuf_id;
-  GLuint depthbuf_id;
+  int width() const { return width_; }
+  int height() const { return height_; }
+  bool isComplete() const { return complete_; }
+
+  bool resize(size_t width, size_t height);
+  GLuint bind();
+  void unbind();
+
+private:
+  void destroy();
+
+  int width_ = 0;
+  int height_ = 0;
+  bool use_ext_ = false;
+  GLuint fbo_id_ = 0;
+  GLuint old_fbo_id_ = 0;
+  GLuint renderbuf_id_ = 0;
+  GLuint depthbuf_id_ = 0;
+  bool complete_ = false;
 };
 
-fbo_t *fbo_new();
-bool fbo_init(fbo_t *fbo, size_t width, size_t height);
-bool fbo_resize(fbo_t *fbo, size_t width, size_t height);
-void fbo_delete(fbo_t *fbo);
-GLuint fbo_bind(fbo_t *fbo);
-void fbo_unbind(fbo_t *fbo);
+std::unique_ptr<FBO> createFBO(int width, int height);
 
-bool REPORTGLERROR(const char *task);
+inline std::unique_ptr<FBO> createFBO(const OpenGLContext& ctx)
+{
+  return createFBO(ctx.width(), ctx.height());
+}

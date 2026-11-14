@@ -1,13 +1,17 @@
 #pragma once
 
-#include "qtgettext.h"
-#include "ui_ErrorLog.h"
-#include "printutils.h"
+#include <QHash>
+#include <QModelIndex>
+#include <QResizeEvent>
 #include <QStandardItemModel>
+#include <QWidget>
+#include <list>
 
-enum errorLog_column {
-  group = 0, file, lineNo, message
-};
+#include "gui/qtgettext.h"
+#include "ui_ErrorLog.h"
+#include "utils/printutils.h"
+
+enum errorLog_column { group = 0, file, lineNo, message };
 
 class ErrorLog : public QWidget, public Ui::errorLogWidget
 {
@@ -21,8 +25,8 @@ public:
   ErrorLog& operator=(ErrorLog&& source) = delete;
   ~ErrorLog() override = default;
   void initGUI();
-  void toErrorLog(const Message& log_msg);
-  void showtheErrorInGUI(const Message& log_msg);
+  void toErrorLog(const Message& logMsg);
+  void showtheErrorInGUI(const Message& logMsg);
   void clearModel();
   int getLine(int row, int col);
   QStandardItemModel *errorLogModel;

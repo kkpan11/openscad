@@ -1,9 +1,13 @@
 #pragma once
 
-#include "qtgettext.h"
-#include "ui_ViewportControl.h"
+#include <QColor>
+#include <QResizeEvent>
 #include <QStandardItemModel>
+#include <QWidget>
 #include <mutex>
+
+#include "gui/qtgettext.h"
+#include "ui_ViewportControl.h"
 
 class MainWindow;
 class QGLView;
@@ -36,18 +40,18 @@ protected:
   bool focusNextPrevChild(bool next) override;
 
 private:
-  MainWindow *mainWindow;
   QGLView *qglview;
   std::mutex inputMutex;
   std::mutex resizeMutex;
   QString yellowHintBackground();
   QString redHintBackground();
+  QColor warnBlendColor{"yellow"};
+  QColor errorBlendColor{"red"};
 
 signals:
   void openFile(const QString, int);
 
 private:
-  bool isLightTheme();
   void resizeToRatio();
   int maxH;
   int maxW;

@@ -1,53 +1,35 @@
 #pragma once
 
-#include <functional>
-#include <memory>
-
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/json_parser.hpp>
+#include <Qsci/qsciscintilla.h>
 
 #include <QMap>
 #include <QObject>
 #include <QString>
+#include <QStringList>
+#include <QVBoxLayout>
 #include <QWidget>
-#include <QVBoxLayout>
-#include <QVBoxLayout>
-#include <Qsci/qsciscintilla.h>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/property_tree/ptree.hpp>
+#include <filesystem>
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
-#include "Editor.h"
-#include "ScadApi.h"
+#include "gui/Editor.h"
+#include "gui/EditorColorMap.h"
+#include "gui/ScadApi.h"
 
 // don't need the full definition, because it confuses Qt
 class ScadLexer;
 class ScadLexer2;
 
-#define ENABLE_LEXERTL  1
-
-
-class EditorColorScheme
-{
-private:
-  const fs::path path;
-
-  boost::property_tree::ptree pt;
-  QString _name;
-  int _index;
-
-public:
-  EditorColorScheme(const fs::path& path);
-  virtual ~EditorColorScheme() = default;
-
-  const QString& name() const;
-  int index() const;
-  bool valid() const;
-  const boost::property_tree::ptree& propertyTree() const;
-};
+#define ENABLE_LEXERTL 1
 
 class ScintillaEditor : public EditorInterface
 {
   Q_OBJECT;
-
-  using colorscheme_set_t = std::multimap<int, std::shared_ptr<EditorColorScheme>, std::less<>>;
 
 public:
   ScintillaEditor(QWidget *parent);
@@ -59,7 +41,8 @@ public:
   QString selectedText() override;
   int updateFindIndicators(const QString& findText, bool visibility = true) override;
   bool find(const QString&, bool findNext = false, bool findBackwards = false) override;
-  void replaceSelectedText(const QString&) override;
+  bool replaceSelectedText(const QString&) override;
+  void insertOrReplaceText(const QString&) override;
   void replaceAll(const QString& findText, const QString& replaceText) override;
   QStringList colorSchemes() override;
   bool canUndo() override;
@@ -70,20 +53,30 @@ public:
   QPoint mapToGlobal(const QPoint&) override;
 
   void setCursorPosition(int line, int col) override;
+  void setSelectionIndicatorStatus(EditorSelectionIndicatorStatus satuts, int level, int lineFrom,
+                                   int colFrom, int lineTo, int colTo) override;
+  void clearAllSelectionIndicators() override;
+  void clearSelectionIndicators(int lineFrom, int colFrom, int lineTo, int colTo);
+
   void setFocus() override;
   void setupAutoComplete(const bool forceOff = false);
+
+  void correctUserVarNamesForCompletionFromSourceFile(const SourceFile *sourceFile,
+                                                      bool flagAutoCompleteIncludeVariables,
+                                                      bool flagAutoCompleteIncludeModules,
+                                                      bool flagAutoCompleteIncludeFunctions);
+  void correctUserVarNamesForCompletionFromInputText(bool flagAutoCompleteIncludeVariables,
+                                                     bool flagAutoCompleteIncludeModules,
+                                                     bool flagAutoCompleteIncludeFunctions);
 
 private:
   void getRange(int *lineFrom, int *lineTo);
   void setColormap(const EditorColorScheme *colorScheme);
-  int readInt(const boost::property_tree::ptree& pt, const std::string& name,
-              const int defaultValue);
+  int readInt(const boost::property_tree::ptree& pt, const std::string& name, const int defaultValue);
   std::string readString(const boost::property_tree::ptree& pt, const std::string& name,
                          const std::string& defaultValue);
   QColor readColor(const boost::property_tree::ptree& pt, const std::string& name,
                    const QColor& defaultColor);
-  void enumerateColorSchemesInPath(colorscheme_set_t& result_set, const fs::path& path);
-  colorscheme_set_t enumerateColorSchemes();
 
   bool eventFilter(QObject *obj, QEvent *event) override;
   bool handleKeyEventNavigateNumber(QKeyEvent *);
@@ -136,32 +129,37 @@ public slots:
   void nextBookmark() override;
   void prevBookmark() override;
   void jumpToNextError() override;
+  void applySettings();
+  void onAutocompleteChanged(bool state);
+  void onCharacterThresholdChanged(int val);
+  void moveLineUp() override;
+  void moveLineDown() override;
 
 private slots:
   void onTextChanged();
   void onUserListSelected(const int id, const QString& text);
-  void applySettings();
-  void onAutocompleteChanged(bool state);
-  void onCharacterThresholdChanged(int val);
   void fireModificationChanged();
   void onIndicatorClicked(int line, int col, Qt::KeyboardModifiers state);
   void onIndicatorReleased(int line, int col, Qt::KeyboardModifiers state);
-signals:
-   void escapePressed(void);	
-
-public:
-  void public_applySettings();
 
 private:
   QVBoxLayout *scintillaLayout;
   static const int symbolMargin = 1;
   static const int numberMargin = 0;
-  static const int errorIndicatorNumber = 8; // first 8 are used by lexers
+  static const int errorIndicatorNumber = 8;  // first 8 are used by lexers
   static const int findIndicatorNumber = 9;
   static const int hyperlinkIndicatorNumber = 10;
   static const int hyperlinkIndicatorOffset = 100;
+
+  // Note:  Marker numbers 25-31 are reserved for line-folding markers.
   static const int errMarkerNumber = 2;
   static const int bmMarkerNumber = 3;
+  static const int selectionMarkerLevelNumber = 4;  // 4-9, there is at max 5 level of depth
+
+  static const int selectionIndicatorIsActiveNumber =
+    11;  // Represents the active selected area text 11 - 12
+  static const int selectionIndicatorIsImpactedNumber =
+    14;  // Represents the impacted selected area text 14-15-16
 
   bool indicatorsActive = false;
 

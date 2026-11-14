@@ -1,31 +1,42 @@
-#include "GeometryUtils.h"
+#include "geometry/GeometryUtils.h"
 
-#include <string>
-#include <cmath>
-#include <memory>
+#include <algorithm>
 #include <boost/functional/hash.hpp>
+#include <cassert>
+#include <cmath>
+#include <cstddef>
+#include <list>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "ext/libtess2/Include/tesselator.h"
-#include "printutils.h"
-#include "Reindexer.h"
-#include "Feature.h"
-#include "PolySet.h"
+#include "geometry/Geometry.h"
+#include "geometry/PolySet.h"
+#include "geometry/Reindexer.h"
+#include "geometry/linalg.h"
+#include "glview/RenderSettings.h"
+#include "libtess2/Include/tesselator.h"
+#include "utils/printutils.h"
 
 #ifdef ENABLE_CGAL
-#include "cgalutils.h"
-#include "CGALHybridPolyhedron.h"
+#include "geometry/cgal/cgalutils.h"
 #endif
 
 #ifdef ENABLE_MANIFOLD
-#include "manifoldutils.h"
+#include "geometry/manifold/ManifoldGeometry.h"
+#include "geometry/manifold/manifoldutils.h"
 #endif
 
-static void *stdAlloc(void *userData, unsigned int size) {
+static void *stdAlloc(void *userData, unsigned int size)
+{
   TESS_NOTUSED(userData);
   return malloc(size);
 }
 
-static void stdFree(void *userData, void *ptr) {
+static void stdFree(void *userData, void *ptr)
+{
   TESS_NOTUSED(userData);
   free(ptr);
 }
@@ -39,12 +50,13 @@ using IndexedEdge = std::pair<int, int>;
 class EdgeDict
 {
 public:
-// Counts occurrences of edges
+  // Counts occurrences of edges
   using IndexedEdgeDict = std::unordered_map<IndexedEdge, int, boost::hash<IndexedEdge>>;
 
   EdgeDict() = default;
 
-  void add(const IndexedFace& face) {
+  void add(const IndexedFace& face)
+  {
     for (size_t i = 0; i < face.size(); ++i) {
       IndexedEdge e(face[(i + 1) % face.size()], face[i]);
       if (this->count(e) > 0) this->remove(e);
@@ -52,7 +64,8 @@ public:
     }
   }
 
-  void remove(const IndexedTriangle& t) {
+  void remove(const IndexedTriangle& t)
+  {
     for (int i = 0; i < 3; ++i) {
       IndexedEdge e(t[i], t[(i + 1) % 3]);
       // If the edge exist, remove it
@@ -61,7 +74,8 @@ public:
     }
   }
 
-  void add(const IndexedTriangle& t) {
+  void add(const IndexedTriangle& t)
+  {
     for (int i = 0; i < 3; ++i) {
       IndexedEdge e(t[(i + 1) % 3], t[i]);
       // If an opposite edge exists, they cancel out
@@ -70,30 +84,27 @@ public:
     }
   }
 
-  void add(int start, int end) {
-    this->add(IndexedEdge(start, end));
-  }
+  void add(int start, int end) { this->add(IndexedEdge(start, end)); }
 
-  void add(const IndexedEdge& e) {
+  void add(const IndexedEdge& e)
+  {
     this->edges[e]++;
-//    PRINTDB("add: (%d,%d)", e.first % e.second);
+    //    PRINTDB("add: (%d,%d)", e.first % e.second);
   }
 
-  void remove(int start, int end) {
-    this->remove(IndexedEdge(start, end));
-  }
+  void remove(int start, int end) { this->remove(IndexedEdge(start, end)); }
 
-  void remove(const IndexedEdge& e) {
+  void remove(const IndexedEdge& e)
+  {
     this->edges[e]--;
     if (this->edges[e] == 0) this->edges.erase(e);
-//    PRINTDB("remove: (%d,%d)", e.first % e.second);
+    //    PRINTDB("remove: (%d,%d)", e.first % e.second);
   }
 
-  int count(int start, int end) {
-    return this->count(IndexedEdge(start, end));
-  }
+  int count(int start, int end) { return this->count(IndexedEdge(start, end)); }
 
-  int count(const IndexedEdge& e) {
+  int count(const IndexedEdge& e)
+  {
     auto it = this->edges.find(e);
     if (it != edges.end()) return it->second;
     return 0;
@@ -103,14 +114,17 @@ public:
 
   size_t size() const { return this->edges.size(); }
 
-  void print() const {
-//    for (const auto& v : this->edges) {
-//      const auto& e = v.first;
-//      PRINTDB("     (%d,%d)%s", e.first % e.second % ((v.second > 1) ? std::to_string(v.second).c_str() : ""));
-//    }
+  void print() const
+  {
+    //    for (const auto& v : this->edges) {
+    //      const auto& e = v.first;
+    //      PRINTDB("     (%d,%d)%s", e.first % e.second % ((v.second > 1) ?
+    //      std::to_string(v.second).c_str() : ""));
+    //    }
   }
 
-  void remove_from_v2e(int vidx, int next, int prev) {
+  void remove_from_v2e(int vidx, int next, int prev)
+  {
     auto& l = v2e[vidx];
     auto it = std::find(l.begin(), l.end(), next);
     if (it != l.end()) l.erase(it);
@@ -122,13 +136,14 @@ public:
     if (l2.empty()) v2e_reverse.erase(vidx);
   }
 
-  void extractTriangle(int vidx, int next, std::vector<IndexedTriangle>& triangles) {
+  void extractTriangle(int vidx, int next, std::vector<IndexedTriangle>& triangles)
+  {
     assert(v2e_reverse.find(vidx) != v2e_reverse.end());
     assert(!v2e_reverse[vidx].empty());
     auto prev = v2e_reverse[vidx].front();
 
     IndexedTriangle t(prev, vidx, next);
-//    PRINTDB("Clipping ear: %d %d %d", t[0] % t[1] % t[2]);
+    //    PRINTDB("Clipping ear: %d %d %d", t[0] % t[1] % t[2]);
     triangles.push_back(t);
     // Remove the generated triangle from the original.
     // Add new boundary edges to the edge dict
@@ -146,7 +161,8 @@ public:
   }
 
   // Triangulate remaining loops and add to triangles
-  void triangulateLoops(std::vector<IndexedTriangle>& triangles) {
+  void triangulateLoops(std::vector<IndexedTriangle>& triangles)
+  {
     // First, look for self-intersections in edges
     v2e.clear();
     v2e_reverse.clear();
@@ -161,7 +177,7 @@ public:
     while (!v2e.empty()) {
       std::unordered_map<int, std::list<int>>::iterator it;
       for (it = v2e.begin(); it != v2e.end(); ++it) {
-        if (it->second.size() == 1) { // First single vertex
+        if (it->second.size() == 1) {  // First single vertex
           auto vidx = it->first;
           auto next = it->second.front();
           extractTriangle(vidx, next, triangles);
@@ -181,7 +197,6 @@ public:
   std::unordered_map<int, std::list<int>> v2e;
   std::unordered_map<int, std::list<int>> v2e_reverse;
 };
-
 
 /*!
    Tessellates input contours into a triangle mesh.
@@ -221,9 +236,9 @@ bool GeometryUtils::tessellatePolygonWithHoles(const std::vector<Vector3f>& vert
   for (auto& face : cleanfaces) {
     size_t i = 0;
     while (face.size() >= 3 && i < face.size()) {
-      if (face[i] == face[(i + 1) % face.size()]) { // Two consecutively equal indices
+      if (face[i] == face[(i + 1) % face.size()]) {  // Two consecutively equal indices
         face.erase(face.begin() + i);
-      } else if (face[(i + face.size() - 1) % face.size()] == face[(i + 1) % face.size()]) { // Null ear
+      } else if (face[(i + face.size() - 1) % face.size()] == face[(i + 1) % face.size()]) {  // Null ear
         if (i == 0) face.erase(face.begin() + i, face.begin() + i + 2);
         else face.erase(face.begin() + i - 1, face.begin() + i + 1);
         i--;
@@ -253,7 +268,7 @@ bool GeometryUtils::tessellatePolygonWithHoles(const std::vector<Vector3f>& vert
 
   if (cleanfaces.size() == 1 && cleanfaces[0].size() == 3) {
     // Input polygon has 3 points. shortcut tessellation.
-    //PRINTDB("  tri: %d %d %d", cleanfaces[0][0] % cleanfaces[0][1] % cleanfaces[0][2]);
+    // PRINTDB("  tri: %d %d %d", cleanfaces[0][0] % cleanfaces[0][1] % cleanfaces[0][2]);
     triangles.emplace_back(cleanfaces[0][0], cleanfaces[0][1], cleanfaces[0][2]);
     return false;
   }
@@ -281,11 +296,10 @@ bool GeometryUtils::tessellatePolygonWithHoles(const std::vector<Vector3f>& vert
   memset(&ma, 0, sizeof(ma));
   ma.memalloc = stdAlloc;
   ma.memfree = stdFree;
-  ma.extraVertices = 256; // realloc not provided, allow 256 extra vertices.
+  ma.extraVertices = 256;  // realloc not provided, allow 256 extra vertices.
 
   if (!(tess = tessNewTess(&ma))) return true;
 
-  int numContours = 0;
   std::vector<TESSreal> contour;
   // Since libtess2's indices is based on the running number of points added, we need to map back
   // to our indices. allindices does the mapping.
@@ -300,12 +314,11 @@ bool GeometryUtils::tessellatePolygonWithHoles(const std::vector<Vector3f>& vert
       allindices.push_back(idx);
     }
     assert(face.size() >= 3);
-//    PRINTDB("Contour: %d\n", face.size());
     tessAddContour(tess, 3, &contour.front(), sizeof(TESSreal) * 3, face.size());
-    numContours++;
   }
 
-  if (!tessTesselate(tess, TESS_WINDING_ODD, TESS_CONSTRAINED_DELAUNAY_TRIANGLES, 3, 3, normalvec)) return false;
+  if (!tessTesselate(tess, TESS_WINDING_ODD, TESS_CONSTRAINED_DELAUNAY_TRIANGLES, 3, 3, normalvec))
+    return false;
 
   const auto vindices = tessGetVertexIndices(tess);
   const auto elements = tessGetElements(tess);
@@ -328,8 +341,8 @@ bool GeometryUtils::tessellatePolygonWithHoles(const std::vector<Vector3f>& vert
      B) Locate all unused vertices
      C) For each unused vertex, create a triangle connecting it to the existing mesh
    */
-  auto inputSize = allindices.size(); // inputSize is number of points added to libtess2
-  std::vector<int> vflags(inputSize); // Inits with 0's
+  auto inputSize = allindices.size();  // inputSize is number of points added to libtess2
+  std::vector<int> vflags(inputSize);  // Inits with 0's
 
   IndexedTriangle tri;
   IndexedTriangle mappedtri;
@@ -341,7 +354,7 @@ bool GeometryUtils::tessellatePolygonWithHoles(const std::vector<Vector3f>& vert
       if (vidx == TESS_UNDEF) {
         err = true;
       } else {
-        tri[i] = vidx; // A)
+        tri[i] = vidx;  // A)
         mappedtri[i] = allindices[vidx];
       }
     }
@@ -351,7 +364,7 @@ bool GeometryUtils::tessellatePolygonWithHoles(const std::vector<Vector3f>& vert
     //         elements[t * 3 + 2] % mappedtri[2]);
     // FIXME: We ignore self-intersecting triangles rather than detecting and handling this
     if (!err) {
-      vflags[tri[0]]++; // B)
+      vflags[tri[0]]++;  // B)
       vflags[tri[1]]++;
       vflags[tri[2]]++;
 
@@ -373,7 +386,7 @@ bool GeometryUtils::tessellatePolygonWithHoles(const std::vector<Vector3f>& vert
       }
       if (reverse) {
         mappedtri.reverseInPlace();
-//        PRINTDB("  reversed: %d %d %d", mappedtri[0] % mappedtri[1] % mappedtri[2]);
+        //        PRINTDB("  reversed: %d %d %d", mappedtri[0] % mappedtri[1] % mappedtri[2]);
       }
 
       // Remove the generated triangle from the original.
@@ -415,7 +428,7 @@ bool GeometryUtils::tessellatePolygonWithHoles(const std::vector<Vector3f>& vert
       i = j;
     }
   }
-#endif // if 0
+#endif  // if 0
 
   tessDeleteTess(tess);
 
@@ -438,7 +451,7 @@ bool GeometryUtils::tessellatePolygon(const Polygon& polygon, Polygons& triangle
     if (currface.empty() || idx != currface.back()) currface.push_back(idx);
   }
   if (currface.front() == currface.back()) currface.pop_back();
-  if (currface.size() >= 3) { // Cull empty triangles
+  if (currface.size() >= 3) {  // Cull empty triangles
     const auto& verts = uniqueVertices.getArray();
     std::vector<IndexedTriangle> indexedtriangles;
     err = tessellatePolygonWithHoles(verts, indexedfaces, indexedtriangles, normal);
@@ -453,15 +466,15 @@ bool GeometryUtils::tessellatePolygon(const Polygon& polygon, Polygons& triangle
   return err;
 }
 
-int GeometryUtils::findUnconnectedEdges(const std::vector<std::vector<IndexedFace>>& polygons)
+int GeometryUtils::findUnconnectedEdges(const std::vector<MarkedIndexedFaces>& polygons)
 {
   EdgeDict edges;
   for (const auto& faces : polygons) {
-    for (const auto& face : faces) {
-      edges.add(face);
+    for (const auto& f : faces.faces) {
+      edges.add(f);
     }
   }
-#if 1 // for debugging
+#if 1  // for debugging
   if (!edges.empty()) {
     PRINTD("Unconnected:");
     edges.print();
@@ -470,13 +483,13 @@ int GeometryUtils::findUnconnectedEdges(const std::vector<std::vector<IndexedFac
   return edges.size();
 }
 
-int GeometryUtils::findUnconnectedEdges(const std::vector<IndexedTriangle>& triangles)
+int GeometryUtils::findUnconnectedEdges(const std::vector<MarkedIndexedTriangle>& triangles)
 {
   EdgeDict edges;
   for (const auto& t : triangles) {
-    edges.add(t);
+    edges.add(t.tri);
   }
-#if 1 // for debugging
+#if 1  // for debugging
   if (!edges.empty()) {
     PRINTD("Unconnected:");
     edges.print();
@@ -486,15 +499,18 @@ int GeometryUtils::findUnconnectedEdges(const std::vector<IndexedTriangle>& tria
   return edges.size();
 }
 
-Transform3d GeometryUtils::getResizeTransform(const BoundingBox &bbox, const Vector3d& newsize, const Eigen::Matrix<bool, 3, 1>& autosize)
+Transform3d GeometryUtils::getResizeTransform(const BoundingBox& bbox, const Vector3d& newsize,
+                                              const Eigen::Matrix<bool, 3, 1>& autosize)
 {
   // Find largest dimension
   int maxdim = 0;
-  for (int i = 1; i < 3; ++i) if (newsize[i] > newsize[maxdim]) maxdim = i;
+  for (int i = 1; i < 3; ++i)
+    if (newsize[i] > newsize[maxdim]) maxdim = i;
 
   // Default scale (scale with 1 if the new size is 0)
   Vector3d scale(1, 1, 1);
-  for (int i = 0; i < 3; ++i) if (newsize[i] > 0) scale[i] = newsize[i] / bbox.sizes()[i];
+  for (int i = 0; i < 3; ++i)
+    if (newsize[i] > 0) scale[i] = newsize[i] / bbox.sizes()[i];
 
   // Autoscale where applicable
   double autoscale = scale[maxdim];
@@ -502,11 +518,7 @@ Transform3d GeometryUtils::getResizeTransform(const BoundingBox &bbox, const Vec
   for (int i = 0; i < 3; ++i) newscale[i] = !autosize[i] || (newsize[i] > 0) ? scale[i] : autoscale;
 
   Transform3d t;
-  t.matrix() <<
-    newscale[0], 0, 0, 0,
-    0, newscale[1], 0, 0,
-    0, 0, newscale[2], 0,
-    0, 0, 0, 1;
+  t.matrix() << newscale[0], 0, 0, 0, 0, newscale[1], 0, 0, 0, 0, newscale[2], 0, 0, 0, 0, 1;
 
   return t;
 }
@@ -514,12 +526,17 @@ Transform3d GeometryUtils::getResizeTransform(const BoundingBox &bbox, const Vec
 // Return or force creation of backend-specific geometry.
 // Will prefer Manifold if multiple backends are enabled.
 // geom must be a 3D PolySet or the correct backend-specific geometry.
-std::shared_ptr<const Geometry> GeometryUtils::getBackendSpecificGeometry(const std::shared_ptr<const Geometry>& geom)
+std::shared_ptr<const Geometry> GeometryUtils::getBackendSpecificGeometry(
+  const std::shared_ptr<const Geometry>& geom)
 {
 #if ENABLE_MANIFOLD
-  if (Feature::ExperimentalManifold.is_enabled()) {
+  if (RenderSettings::inst()->backend3D == RenderBackend3D::ManifoldBackend) {
     if (const auto ps = std::dynamic_pointer_cast<const PolySet>(geom)) {
-      return ManifoldUtils::createManifoldFromPolySet(*ps);
+      std::shared_ptr<ManifoldGeometry> mani = ManifoldUtils::createManifoldFromPolySet(*ps);
+      if (mani == nullptr) {
+        mani = std::make_shared<ManifoldGeometry>();
+      }
+      return mani;
     } else if (auto mani = std::dynamic_pointer_cast<const ManifoldGeometry>(geom)) {
       return geom;
     } else {
@@ -528,22 +545,12 @@ std::shared_ptr<const Geometry> GeometryUtils::getBackendSpecificGeometry(const 
   }
 #endif
 #if ENABLE_CGAL
-  if (Feature::ExperimentalFastCsg.is_enabled()) {
-    if (auto ps = std::dynamic_pointer_cast<const PolySet>(geom)) {
-      return CGALUtils::createHybridPolyhedronFromPolySet(*ps);
-    } else if (auto poly = std::dynamic_pointer_cast<const CGALHybridPolyhedron>(geom)) {
-      return geom;
-    } else {
-      assert(false && "Unexpected geometry");
-    }
+  if (auto ps = std::dynamic_pointer_cast<const PolySet>(geom)) {
+    return CGALUtils::createNefPolyhedronFromPolySet(*ps);
+  } else if (auto poly = std::dynamic_pointer_cast<const CGALNefGeometry>(geom)) {
+    return geom;
   } else {
-    if (auto ps = std::dynamic_pointer_cast<const PolySet>(geom)) {
-      return CGALUtils::createNefPolyhedronFromPolySet(*ps);
-    } else if (auto poly = std::dynamic_pointer_cast<const CGAL_Nef_polyhedron>(geom)) {
-      return geom;
-    } else {
-      assert(false && "Unexpected geometry");
-    }
+    assert(false && "Unexpected geometry");
   }
 #endif
   return nullptr;

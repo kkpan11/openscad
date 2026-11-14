@@ -1,16 +1,12 @@
 #pragma once
 
-#include <boost/filesystem.hpp>
-#include "printutils.h"
-namespace fs = boost::filesystem;
-
-fs::path boostfs_normalize(const fs::path& path);
-fs::path boostfs_uncomplete(fs::path const& p, fs::path const& base);
-
 #include <boost/cast.hpp>
+#include <boost/logic/tribool.hpp>
+#include <limits>
 #include <sstream>
 
-#include <boost/logic/tribool.hpp>
+#include "utils/printutils.h"
+
 BOOST_TRIBOOL_THIRD_STATE(unknown)
 
 /* Convert number types but print WARNING for failures during
@@ -20,7 +16,8 @@ BOOST_TRIBOOL_THIRD_STATE(unknown)
    For positive overflow, return max of Tout template type
    For negative overflow, return min of Tout template type
    On other conversion failures, return 0. */
-template <class Tout, class Tin> Tout boost_numeric_cast(Tin input)
+template <class Tout, class Tin>
+Tout boost_numeric_cast(Tin input)
 {
   Tout result = 0;
   std::ostringstream status;
@@ -44,5 +41,3 @@ template <class Tout, class Tin> Tout boost_numeric_cast(Tin input)
   }
   return result;
 }
-
-

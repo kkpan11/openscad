@@ -1,18 +1,29 @@
 #pragma once
 
-#include "node.h"
-#include "ext/polyclipping/clipper.hpp"
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "clipper2/clipper.h"
+#include "core/CurveDiscretizer.h"
+#include "core/ModuleInstantiation.h"
+#include "core/node.h"
 
 class OffsetNode : public AbstractPolyNode
 {
 public:
   VISITABLE();
-  OffsetNode(const ModuleInstantiation *mi) : AbstractPolyNode(mi) { }
+  OffsetNode(const ModuleInstantiation *mi, CurveDiscretizer discretizer)
+    : AbstractPolyNode(mi), discretizer(std::move(discretizer))
+  {
+  }
+
   std::string toString() const override;
   std::string name() const override { return "offset"; }
 
   bool chamfer{false};
-  double fn{0}, fs{0}, fa{0}, delta{1};
-  double miter_limit{1000000.0}; // currently fixed high value to disable chamfers with jtMiter
-  ClipperLib::JoinType join_type{ClipperLib::jtRound};
+  CurveDiscretizer discretizer;
+  double delta{1};
+  double miter_limit{1000000.0};  // currently fixed high value to disable chamfers with jtMiter
+  Clipper2Lib::JoinType join_type{Clipper2Lib::JoinType::Round};
 };

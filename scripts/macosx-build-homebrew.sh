@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # This script builds library dependencies of OpenSCAD for Mac OS X using Homebrew.
 #
@@ -41,43 +41,10 @@ then
 	TAP=brew
 fi
 $TAP tap openscad/homebrew-tap
+$TAP trust openscad/homebrew-tap
 
-# FIXME: We used to require unlinking boost, but doing so also causes us to lose boost.
-# Disabling until we can figure out why we unlinked in the first place
-# brew unlink boost
-
-# Python 2 conflicts with Python 3 links
-brew unlink python@2
-
-for formula in boost; do
-  log "Installing or updating formula $formula"
-  if brew ls --versions $formula; then
-    time brew upgrade $formula
-  else
-    time brew install $formula
-  fi
-done
-
-for formula in pkg-config eigen cgal glew glib opencsg freetype libzip libxml2 fontconfig harfbuzz qt5 lib3mf double-conversion imagemagick ccache ghostscript tbb; do
+for formula in pkg-config boost eigen cgal glew glib opencsg freetype libzip libxml2 fontconfig harfbuzz lib3mf osmesa double-conversion imagemagick ccache ghostscript tbb catch2 qt qscintilla2; do
   log "Installing formula $formula"
   brew ls --versions $formula
   time brew install $formula
 done
-
-# Link for formulas that are cached on Travis.
-for formula in libzip opencsg; do
-  log "Linking formula $formula"
-  time brew link $formula
-done
-
-for formula in gettext qt5; do
-  log "Linking formula $formula"
-  time brew link --force $formula
-done
-
-# FIXME: Workaround for https://github.com/openscad/openscad/issues/5058
-curl -o qscintilla2.rb https://raw.githubusercontent.com/Homebrew/homebrew-core/da59bcdf7f1dadf70e30240394ddc0bd6014affe/Formula/q/qscintilla2.rb
-brew unlink qscintilla2
-brew install qscintilla2.rb
-
-$TAP untap openscad/homebrew-tap || true

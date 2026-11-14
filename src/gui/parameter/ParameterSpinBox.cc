@@ -1,9 +1,17 @@
-#include "ParameterSpinBox.h"
-#include "IgnoreWheelWhenNotFocused.h"
+#include "gui/parameter/ParameterSpinBox.h"
 
-ParameterSpinBox::ParameterSpinBox(QWidget *parent, NumberParameter *parameter, DescriptionStyle descriptionStyle) :
-  ParameterVirtualWidget(parent, parameter),
-  parameter(parameter)
+#include <QWidget>
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
+#include "core/customizer/ParameterObject.h"
+#include "gui/IgnoreWheelWhenNotFocused.h"
+#include "gui/parameter/ParameterVirtualWidget.h"
+
+ParameterSpinBox::ParameterSpinBox(QWidget *parent, NumberParameter *parameter,
+                                   DescriptionStyle descriptionStyle)
+  : ParameterVirtualWidget(parent, parameter), parameter(parameter)
 {
   setupUi(this);
   descriptionWidget->setDescription(parameter, descriptionStyle);
@@ -42,19 +50,22 @@ ParameterSpinBox::ParameterSpinBox(QWidget *parent, NumberParameter *parameter, 
   doubleSpinBox->setRange(minimum, maximum);
   doubleSpinBox->setSingleStep(step);
 
-  connect(doubleSpinBox, SIGNAL(valueChanged(double)), this, SLOT(onChanged(double)));
-  connect(doubleSpinBox, SIGNAL(editingFinished()), this, SLOT(onEditingFinished()));
+  connect(doubleSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+          &ParameterSpinBox::onChanged);
+  connect(doubleSpinBox, &QDoubleSpinBox::editingFinished, this, &ParameterSpinBox::onEditingFinished);
   ParameterSpinBox::setValue();
 }
 
-void ParameterSpinBox::valueApplied() {
+void ParameterSpinBox::valueApplied()
+{
   lastApplied = lastSent;
 }
 
 void ParameterSpinBox::onChanged(double value)
 {
 #ifdef DEBUG
-  PRINTD(STR("[changed] value=", value, ", parameter->value=", parameter->value, ", lastSent=", lastSent, ", lastApplied=", lastApplied));
+  PRINTD(STR("[changed] value=", value, ", parameter->value=", parameter->value, ", lastSent=", lastSent,
+             ", lastApplied=", lastApplied));
 #endif
   parameter->value = value;
   if (lastSent != value) {
@@ -66,7 +77,8 @@ void ParameterSpinBox::onChanged(double value)
 void ParameterSpinBox::onEditingFinished()
 {
 #ifdef DEBUG
-  PRINTD(STR("[finished] parameter->value=", parameter->value, ", lastSent=", lastSent, ", lastApplied=", lastApplied));
+  PRINTD(STR("[finished] parameter->value=", parameter->value, ", lastSent=", lastSent,
+             ", lastApplied=", lastApplied));
 #endif
   if (lastApplied != parameter->value) {
     lastSent = parameter->value;
